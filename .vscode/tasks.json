@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build OpenGL App",
+            "label": "build OpenGL app",
             "type": "shell",
             "command": "g++",
             "args": [

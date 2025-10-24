@@ -1,4 +1,5 @@
 #include <GL/freeglut.h>
+// BUILD COMMAND:
 // g++ src/main.cpp -Ilibs/freeglut/include -Llibs/freeglut/lib -lfreeglut -lopengl32 -lglu32 -o app.exe
 
 void display() {
@@ -13,8 +14,9 @@ void display() {
 
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
-    glutCreateWindow("FreeGLUT + VS Code");
+    glutCreateWindow("Scene 1");
     glutDisplayFunc(display);
+     glutInitWindowSize(800, 800);
     glutMainLoop();
     return 0;
 }
