@@ -20,7 +20,7 @@ int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutCreateWindow("Scene 1");
     glutDisplayFunc(display);
-     glutInitWindowSize(600, 600);
+     glutInitWindowSize(900, 500);
     glutMainLoop();
     return 0;
 }
