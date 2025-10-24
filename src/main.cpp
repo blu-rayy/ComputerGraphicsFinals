@@ -193,7 +193,6 @@ int main(int argc, char** argv) {
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
     glutInitWindowSize(1920, 1080);
     glutCreateWindow("Scene 1 - Sky & Sun");
-
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
     glutReshapeFunc([](int w, int h){
