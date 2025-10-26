@@ -1,8 +1,15 @@
+#include <windows.h>
+#include <cstdio>
+#include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <cmath>
+#include <cstdlib>
 
-// BUILD COMMAND:
-// g++ src/main.cpp -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -lfreeglut -lopengl32 -lglu32 -o app.exe
+/* BUILD COMMAND
+
+ g++ src/main.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -o app.exe
+
+*/
 
 // Sun elevation in normalized device coords Y (-1 bottom .. +1 top)
 static float sunElevation = -0.2f; // default: sunset (orangey)
@@ -13,6 +20,73 @@ static float mixf(float a, float b, float t) {
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
     return a + (b - a) * t;
+}
+
+// vertex data (source for VBOs)
+static const GLfloat groundVerts[] = {
+    -1.0f, -1.0f,
+     1.0f, -1.0f,
+     1.0f, -0.4f,
+    -1.0f, -0.4f
+};
+
+static const GLfloat trapVerts[] = {
+    -0.75f, -0.4f,
+     0.75f, -0.4f,
+     0.55f, -0.85f,
+    -0.55f, -0.85f
+};
+
+static GLuint vboHandles[2] = {0, 0}; // 0: ground, 1: trap
+static GLuint vaoHandles[2] = {0, 0}; // 0: ground, 1: trap
+static bool haveVBO = false;
+
+// Create VBOs and VAOs. Must be called after an OpenGL context exists and after glewInit().
+static void createResources() {
+    if (haveVBO || vboHandles[0] != 0) return; // already attempted
+
+    // Check for VBO support
+    if (!(GLEW_ARB_vertex_buffer_object || GLEW_VERSION_1_5)) {
+        std::fprintf(stderr, "ERROR: VBOs not supported by this OpenGL implementation. Exiting.\n");
+        std::exit(1);
+    }
+
+    // Create VBOs
+    glGenBuffers(2, vboHandles);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboHandles[0]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(groundVerts), groundVerts, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, vboHandles[1]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(trapVerts), trapVerts, GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // Create VAOs if supported
+    if (GLEW_ARB_vertex_array_object || GLEW_VERSION_3_0) {
+        glGenVertexArrays(2, vaoHandles);
+
+        // ground
+        glBindVertexArray(vaoHandles[0]);
+        glBindBuffer(GL_ARRAY_BUFFER, vboHandles[0]);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+
+        // trapezoid
+        glBindVertexArray(vaoHandles[1]);
+        glBindBuffer(GL_ARRAY_BUFFER, vboHandles[1]);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    } else {
+        // If VAOs aren't available, we'll still use VBOs and set attribute pointers per-draw.
+        vaoHandles[0] = vaoHandles[1] = 0;
+    }
+
+    haveVBO = true;
 }
 
 // Utility mix for RGB
@@ -40,6 +114,9 @@ static void drawTree(float x, float y, float scale) {
     glBegin(GL_QUADS);
         glVertex2f(x - 0.04f * scale, y);
         glVertex2f(x + 0.04f * scale, y);
+
+        
+
         glVertex2f(x + 0.04f * scale, y + 0.35f * scale);
         glVertex2f(x - 0.04f * scale, y + 0.35f * scale);
     glEnd();
@@ -131,13 +208,14 @@ void display() {
     }
     mixColor(gt_night, gt_day, tGround, groundTopTint);
 
-    glBegin(GL_QUADS);
-        glColor3f(groundTopTint[0], groundTopTint[1], groundTopTint[2]);
-        glVertex2f(-1.0f, -1.0f);
-        glVertex2f( 1.0f, -1.0f);
-        glVertex2f( 1.0f, -0.4f);
-        glVertex2f(-1.0f, -0.4f);
-    glEnd();
+    // draw ground 
+    glBindBuffer(GL_ARRAY_BUFFER, vboHandles[0]);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(2, GL_FLOAT, 0, nullptr);
+    glColor3f(groundTopTint[0], groundTopTint[1], groundTopTint[2]);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glDisableClientState(GL_VERTEX_ARRAY);
 
     // muted ground at night
     float rubberColor[3] = {0.6f, 0.18f, 0.18f};
@@ -145,13 +223,14 @@ void display() {
     rubberColor[1] *= mixf(0.5f, 1.0f, tGround);
     rubberColor[2] *= mixf(0.5f, 1.0f, tGround);
 
+    // Draw rubber trapezoid 
+    glBindBuffer(GL_ARRAY_BUFFER, vboHandles[1]);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(2, GL_FLOAT, 0, nullptr);
     glColor3f(rubberColor[0], rubberColor[1], rubberColor[2]);
-    glBegin(GL_POLYGON);
-        glVertex2f(-0.75f, -0.4f);
-        glVertex2f( 0.75f, -0.4f);
-        glVertex2f( 0.55f, -0.85f);
-        glVertex2f(-0.55f, -0.85f);
-    glEnd();
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glDisableClientState(GL_VERTEX_ARRAY);
 
     // Draw trees left and right
     drawTree(-0.85f, -0.4f, 1.0f);
@@ -193,6 +272,15 @@ int main(int argc, char** argv) {
     glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
     glutInitWindowSize(1920, 1080);
     glutCreateWindow("Scene 1 - Sky & Sun");
+    
+    glewExperimental = GL_TRUE; 
+    GLenum glewErr = glewInit();
+    if (glewErr != GLEW_OK) {
+        std::fprintf(stderr, "GLEW initialization Failed: %s\n", glewGetErrorString(glewErr));
+        return 1;
+    }
+    // Create VBO/VAO resource
+    createResources();
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
     glutReshapeFunc([](int w, int h){

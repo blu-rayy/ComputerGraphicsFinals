@@ -1,25 +1,23 @@
 {
-    "version": "2.0.0",
-    "tasks": [
-        {
-            "label": "build OpenGL app",
-            "type": "shell",
-            "command": "g++",
-            "args": [
-                "src/main.cpp",
-                "-Ilibs/freeglut/include",
-                "-Llibs/freeglut/lib/x64",
-                "-lfreeglut",
-                "-lopengl32",
-                "-lglu32",
-                "-o",
-                "app.exe"
-            ],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
-            "problemMatcher": ["$gcc"]
-        }
-    ]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "g++",
+      "args": [
+        "src/main.cpp",
+  "-Ilibs/include",
+  "-Ilibs/freeglut/include",
+        "-Llibs/freeglut/lib/x64",
+        "-Llibs",
+        "-lglew32",
+        "-lfreeglut",
+        "-lopengl32",
+        "-lglu32",
+        "-o", "app.exe"
+      ],
+      "group": { "kind": "build", "isDefault": true }
+    }
+  ]
 }
