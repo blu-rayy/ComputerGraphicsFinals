@@ -1,0 +1,50 @@
+# Build artifacts
+app.exe
+*.exe
+*.out
+*.o
+*.obj
+*.lo
+
+# Static/temporary libs / linker objects (don't ignore project-vendored libs)
+*.a
+# *.lib   # keep .lib in repo if vendored, uncomment to ignore
+
+# Build directories
+/build/
+/bin/
+/dist/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Visual Studio / MSVC
+.vs/
+*.suo
+*.user
+*.userosscache
+*.vcxproj*
+*.vcxproj.user
+
+# VS Code local storage (keep settings tracked unless you want to ignore them)
+.history/
+# .vscode/   # keep .vscode in repo; uncomment to ignore entirely
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Logs and temp
+*.log
+*.tmp
+*~
+*.swp
+
+# Coverage / test output
+coverage/
+*.gcda
+*.gcno
