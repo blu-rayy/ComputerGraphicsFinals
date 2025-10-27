@@ -9,15 +9,13 @@
 
 /* BUILD COMMAND
 
- g++ src/main.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -o app.exe
+ g++ src/main.cpp src/utils.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -o app.exe
 
 */
 
 // Sun elevation in normalized device coords Y (-1 bottom .. +1 top)
 static float sunElevation = -0.2f; // default: sunset (orangey)
 static bool sunVisible = true;     // when false, force midday sky and hide sun
-
-// Utility functions (mixf, mixColor, drawCircle) moved to utils.cpp
 
 // vertex data (source for VBOs)
 static const GLfloat groundVerts[] = {
@@ -91,22 +89,28 @@ static void createResources() {
 // Utility functions for colors and circle drawing are in utils.cpp
 
 // Draw a simple tree using circles for foliage and a rectangle trunk
-static void drawTree(float x, float y, float scale) {
-    // trunk
-    glColor3f(0.55f, 0.27f, 0.07f);
+static void drawTree(float x, float y, float scale, float tGround) {
+    // trunk -- darken slightly at night
+    float trunkBase[3] = {0.55f, 0.27f, 0.07f};
+    float trunkMod = mixf(0.6f, 1.0f, tGround); // darker at night
+    float trunk[3] = { trunkBase[0] * trunkMod, trunkBase[1] * trunkMod, trunkBase[2] * trunkMod };
+    glColor3f(trunk[0], trunk[1], trunk[2]);
     glBegin(GL_QUADS);
         glVertex2f(x - 0.04f * scale, y);
         glVertex2f(x + 0.04f * scale, y);
-
-        
-
         glVertex2f(x + 0.04f * scale, y + 0.35f * scale);
         glVertex2f(x - 0.04f * scale, y + 0.35f * scale);
     glEnd();
 
-    float dark[3] = {0.13f, 0.55f, 0.13f};
-    float mid[3]  = {0.18f, 0.60f, 0.18f};
-    float light[3]= {0.22f, 0.66f, 0.22f};
+    // foliage colors (base), we'll modulate by tGround so they dim at night
+    float darkBase[3] = {0.13f, 0.55f, 0.13f};
+    float midBase[3]  = {0.18f, 0.60f, 0.18f};
+    float lightBase[3]= {0.22f, 0.66f, 0.22f};
+
+    float foliageFactor = mixf(0.5f, 1.0f, tGround);
+    float dark[3] = { darkBase[0] * foliageFactor, darkBase[1] * foliageFactor, darkBase[2] * foliageFactor };
+    float mid[3]  = { midBase[0]  * foliageFactor, midBase[1]  * foliageFactor, midBase[2]  * foliageFactor };
+    float light[3]= { lightBase[0]* foliageFactor, lightBase[1]* foliageFactor, lightBase[2]* foliageFactor };
 
     drawCircle(x, y + 0.40f * scale, 0.12f * scale, dark);
     drawCircle(x - 0.10f * scale, y + 0.55f * scale, 0.12f * scale, dark);
@@ -229,12 +233,12 @@ void display() {
     glDisableClientState(GL_VERTEX_ARRAY);
 
     // Draw trees left and right
-    drawTree(-0.85f, -0.4f, 1.0f);
-    drawTree(-0.65f, -0.5f, 0.9f);
-    drawTree(-0.45f, -0.45f, 1.1f);
-    drawTree(0.45f, -0.45f, 1.0f);
-    drawTree(0.65f, -0.5f, 0.95f);
-    drawTree(0.85f, -0.4f, 1.05f);
+    drawTree(-0.85f, -0.4f, 1.0f, tGround);
+    drawTree(-0.65f, -0.5f, 0.9f, tGround);
+    drawTree(-0.45f, -0.45f, 1.1f, tGround);
+    drawTree(0.45f, -0.45f, 1.0f, tGround);
+    drawTree(0.65f, -0.5f, 0.95f, tGround);
+    drawTree(0.85f, -0.4f, 1.05f, tGround);
 
     glFlush();
 }
