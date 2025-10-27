@@ -19,6 +19,8 @@ void mixColor(const float a[3], const float b[3], float t, float out[3]) {
 
 void drawCircle(float cx, float cy, float radius, const float color[3]) {
     glColor3fv(color);
+    // 2D geometry lies on XY plane; set normal so fixed-function lighting affects it
+    glNormal3f(0.0f, 0.0f, 1.0f);
     glBegin(GL_TRIANGLE_FAN);
     glVertex2f(cx, cy);
     const int segs = 48;

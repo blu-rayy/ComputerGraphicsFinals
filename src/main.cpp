@@ -94,6 +94,8 @@ static void drawTree(float x, float y, float scale, float tGround) {
     float trunkBase[3] = {0.55f, 0.27f, 0.07f};
     float trunkMod = mixf(0.6f, 1.0f, tGround); // darker at night
     float trunk[3] = { trunkBase[0] * trunkMod, trunkBase[1] * trunkMod, trunkBase[2] * trunkMod };
+    // set normal for trunk quad so lighting behaves predictably
+    glNormal3f(0.0f, 0.0f, 1.0f);
     glColor3f(trunk[0], trunk[1], trunk[2]);
     glBegin(GL_QUADS);
         glVertex2f(x - 0.04f * scale, y);
@@ -208,10 +210,73 @@ void display() {
     }
     mixColor(gt_night, gt_day, tGround, groundTopTint);
 
+    // setup lighting centered on sun (dynamic intensity + range based on elevation)
+    if (sunVisible) {
+        glEnable(GL_LIGHTING);
+        glEnable(GL_LIGHT0);
+        glEnable(GL_COLOR_MATERIAL);
+        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+
+    // normalize elevation to [0..1] (0 = lowest, 1 = highest)
+    float e_norm = (sunElevation + 1.0f) * 0.5f;
+    // soften curve so midday gets proportionally brighter
+    float e_smooth = powf(e_norm, 0.6f);
+
+    // intensity stronger during day, but tone down the midday peak
+    float intensity = mixf(0.15f, 2.5f, e_smooth);
+
+    // warm but not overwhelmingly so at noon
+    float warmColor[3] = {1.0f, 0.55f, 0.18f};
+    float finalColor[3];
+    // warmFactor: bias toward warmth at midday but cap below 1.0
+    float warmFactor = mixf(0.15f, 0.85f, e_smooth);
+    mixColor(sunColor, warmColor, warmFactor, finalColor);
+
+        float lightDiffuse[4]  = { finalColor[0] * intensity, finalColor[1] * intensity, finalColor[2] * intensity, 1.0f };
+    // ambient slightly higher at midday but reduced from previous extremes
+    float lightAmbient[4]  = { finalColor[0] * (0.06f + 0.32f * e_smooth), finalColor[1] * (0.06f + 0.32f * e_smooth), finalColor[2] * (0.06f + 0.32f * e_smooth), 1.0f };
+    float specMul = mixf(0.3f, 0.8f, e_smooth);
+    float lightSpecular[4] = { specMul, specMul, specMul, 1.0f };
+
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+        glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
+        glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
+
+        // attenuation: decrease attenuation when sun is higher (wider radius)
+    // attenuation: much less attenuation at midday so light reaches farther
+    // increase attenuation at midday so the scene doesn't get overly washed
+    float linearAtt  = mixf(0.9f, 0.08f, e_smooth);
+    float quadAtt    = mixf(0.9f, 0.02f, e_smooth);
+    glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
+    glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, linearAtt);
+    glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, quadAtt);
+
+    // stronger specular highlight / shininess at midday
+    float matSpec[4] = { mixf(0.2f, 0.8f, e_smooth), mixf(0.2f, 0.8f, e_smooth), mixf(0.2f, 0.8f, e_smooth), 1.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, mixf(12.0f, 48.0f, e_smooth));
+
+        // Position the light at the sun's world-space location (slightly in front)
+    // position the light further above the scene so midday illumination covers more
+    // position the light slightly closer to the scene to reduce overall wash at noon
+    glPushMatrix();
+    glLoadIdentity();
+    glTranslatef(sunX, sunY, 0.6f);
+    float lightPos[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+    glPopMatrix();
+    } else {
+        glDisable(GL_LIGHT0);
+        glDisable(GL_LIGHTING);
+        glDisable(GL_COLOR_MATERIAL);
+    }
+
     // draw ground 
     glBindBuffer(GL_ARRAY_BUFFER, vboHandles[0]);
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(2, GL_FLOAT, 0, nullptr);
+    // set normal so lighting affects this plane
+    glNormal3f(0.0f, 0.0f, 1.0f);
     glColor3f(groundTopTint[0], groundTopTint[1], groundTopTint[2]);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -227,6 +292,7 @@ void display() {
     glBindBuffer(GL_ARRAY_BUFFER, vboHandles[1]);
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(2, GL_FLOAT, 0, nullptr);
+    glNormal3f(0.0f, 0.0f, 1.0f);
     glColor3f(rubberColor[0], rubberColor[1], rubberColor[2]);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
