@@ -40,6 +40,8 @@ static const GLfloat trapVerts[] = {
 static GLuint vboHandles[2] = {0, 0}; // 0: ground, 1: trap
 static GLuint vaoHandles[2] = {0, 0}; // 0: ground, 1: trap
 static bool haveVBO = false;
+// current window aspect (width/height). Updated in reshape callback.
+static float winAspect = 1.0f;
 
 // Create VBOs and VAOs. Must be called after an OpenGL context exists and after glewInit().
 static void createResources() {
@@ -188,9 +190,22 @@ void display() {
 
     float sunX = 0.0f;
     float sunY = sunElevation;
-    float radius = mixf(0.03f, 0.12f, (sunElevation + 1.0f) / 2.0f); // sun smaller at night
+    // slightly larger sun: increase min/max radius
+    float radius = mixf(0.04f, 0.14f, (sunElevation + 1.0f) / 2.0f); // sun smaller at night
 
-    if (sunVisible) drawCircle(sunX, sunY, radius, sunColor);
+    if (sunVisible) {
+        glPushMatrix();
+        glTranslatef(sunX, sunY, 0.0f);
+        float sx = 1.0f, sy = 1.0f;
+        if (winAspect >= 1.0f) {
+            sx = 1.0f / winAspect;
+        } else {
+            sy = winAspect;
+        }
+        glScalef(sx, sy, 1.0f);
+        drawCircle(0.0f, 0.0f, radius, sunColor);
+        glPopMatrix();
+    }
 
     // ground darkens at night
     float groundTopTint[3];
@@ -284,9 +299,13 @@ int main(int argc, char** argv) {
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
     glutReshapeFunc([](int w, int h){
+        if (h == 0) h = 1;
+        winAspect = (float)w / (float)h;
         glViewport(0,0,w,h);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
+        // Keep a fixed logical coordinate system (-1..1 both axes);
+        // we'll correct the sun drawing separately so circles stay circular.
         glOrtho(-1, 1, -1, 1, -1, 1);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
