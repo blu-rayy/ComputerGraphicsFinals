@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdlib>
 
+#include "utils.h"
+
 /* BUILD COMMAND
 
  g++ src/main.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -o app.exe
@@ -15,12 +17,7 @@
 static float sunElevation = -0.2f; // default: sunset (orangey)
 static bool sunVisible = true;     // when false, force midday sky and hide sun
 
-// Utility mix for floats
-static float mixf(float a, float b, float t) {
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    return a + (b - a) * t;
-}
+// Utility functions (mixf, mixColor, drawCircle) moved to utils.cpp
 
 // vertex data (source for VBOs)
 static const GLfloat groundVerts[] = {
@@ -91,23 +88,7 @@ static void createResources() {
     haveVBO = true;
 }
 
-// Utility mix for RGB
-static void mixColor(const float a[3], const float b[3], float t, float out[3]) {
-    for (int i = 0; i < 3; ++i) out[i] = mixf(a[i], b[i], t);
-}
-
-// Draw a filled circle (triangle fan)
-static void drawCircle(float cx, float cy, float radius, const float color[3]) {
-    glColor3fv(color);
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(cx, cy);
-    const int segs = 48;
-    for (int i = 0; i <= segs; ++i) {
-        float a = (float)i / (float)segs * 2.0f * 3.14159265f;
-        glVertex2f(cx + cosf(a) * radius, cy + sinf(a) * radius);
-    }
-    glEnd();
-}
+// Utility functions for colors and circle drawing are in utils.cpp
 
 // Draw a simple tree using circles for foliage and a rectangle trunk
 static void drawTree(float x, float y, float scale) {
