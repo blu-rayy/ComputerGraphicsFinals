@@ -3,9 +3,14 @@
 #include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <cmath>
+#include <vector>
 #include <cstdlib>
 
 #include "utils.h"
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 /* BUILD COMMAND
 
@@ -298,6 +303,8 @@ void display() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glDisableClientState(GL_VERTEX_ARRAY);
 
+    
+
     // Draw trees left and right
     drawTree(-0.85f, -0.4f, 1.0f, tGround);
     drawTree(-0.65f, -0.5f, 0.9f, tGround);
@@ -305,6 +312,84 @@ void display() {
     drawTree(0.45f, -0.45f, 1.0f, tGround);
     drawTree(0.65f, -0.5f, 0.95f, tGround);
     drawTree(0.85f, -0.4f, 1.05f, tGround);
+
+    // Draw playground structure (in front of trees)
+    glPushAttrib(GL_ENABLE_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_COLOR_MATERIAL);
+
+    // roof left
+    glColor3f(0.8f, 0.5f, 0.1f);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.7f, 0.5f);
+    glVertex2f(-0.45f, 0.8f);
+    glVertex2f(-0.4f, 0.8f);
+    glVertex2f(-0.65f, 0.5f);
+    glEnd();
+
+    // roof mid
+    glColor3f(0.8f, 0.5f, 0.1f);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.44f, 0.8f);
+    glVertex2f(-0.4f, 0.8f);
+    glVertex2f(-0.4f, 0.5f);
+    glVertex2f(-0.44f, 0.5f);
+    glEnd();
+
+    // roof right
+    glColor3f(0.8f, 0.5f, 0.1f);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.44f, 0.8f);
+    glVertex2f(-0.4f, 0.8f);
+    glVertex2f(-0.15f, 0.5f);
+    glVertex2f(-0.2f, 0.5f);
+    glEnd();
+
+    // foundation left
+    glColor3f(0.55f, 0.27f, 0.07f);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.69f, 0.5f);
+    glVertex2f(-0.64f, 0.5f);
+    glVertex2f(-0.64f, -0.2f);
+    glVertex2f(-0.69f, -0.2f);
+    glEnd();
+
+    // foundation mid
+    glColor3f(0.55f, 0.27f, 0.07f);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.45f, 0.5f);
+    glVertex2f(-0.4f, 0.5f);
+    glVertex2f(-0.4f, -0.65f);
+    glVertex2f(-0.45f, -0.65f);
+    glEnd();
+
+    // foundation right
+    glColor3f(0.55f, 0.27f, 0.07f);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.21f, 0.5f);
+    glVertex2f(-0.16f, 0.5f);
+    glVertex2f(-0.16f, -0.62f);
+    glVertex2f(-0.21f, -0.62f);
+    glEnd();
+
+    // floor line
+    glColor3f(0.55f, 0.27f, 0.07f);
+    glLineWidth(3.0f);
+    glBegin(GL_LINES);
+    glVertex2f(-0.69f, -0.2f);
+    glVertex2f(-0.16f, -0.2f);
+    glEnd();
+
+    // climbing ramp
+    glColor3f(0.8f, 0.5f, 0.1f);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.69f, -0.2f);
+    glVertex2f(-0.43f, -0.2f);
+    glVertex2f(-0.62f, -0.7f);
+    glVertex2f(-0.9f, -0.65f);
+    glEnd();
+
+    glPopAttrib();
 
     glFlush();
 }
@@ -365,3 +450,4 @@ int main(int argc, char** argv) {
     glutMainLoop();
     return 0;
 }
+
