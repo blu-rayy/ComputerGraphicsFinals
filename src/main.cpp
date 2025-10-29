@@ -436,6 +436,80 @@ void display() {
     glVertex2f(-0.43, -0.17);
     glEnd();
 
+    //outside right fence
+    glColor3f(0.7, 0.3, 0.1);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.16, 0.0);
+    glVertex2f(0.03, 0.0);
+    glVertex2f(0.03, -0.49);
+    glVertex2f(-0.16, -0.49);
+    glEnd();
+
+    glColor3f(0.6, 0.27, 0.1);
+    glLineWidth(28.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.14, 0.0);
+    glVertex2f(-0.14, -0.49);
+    glEnd();
+    glColor3f(0.8, 0.5, 0.1);
+    glLineWidth(3.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.13, 0.0);
+    glVertex2f(-0.13, -0.49);
+    glEnd();
+
+    glColor3f(0.6, 0.27, 0.1);
+    glLineWidth(28.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.1, 0.0);
+    glVertex2f(-0.1, -0.49);
+    glEnd();
+    glColor3f(0.8, 0.5, 0.1);
+    glLineWidth(3.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.09, 0.0);
+    glVertex2f(-0.09, -0.49);
+    glEnd();
+
+    glColor3f(0.6, 0.27, 0.1);
+    glLineWidth(28.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.06, 0.0);
+    glVertex2f(-0.06, -0.49);
+    glEnd();
+    glColor3f(0.8, 0.5, 0.1);
+    glLineWidth(3.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.05, 0.0);
+    glVertex2f(-0.05, -0.49);
+    glEnd();
+
+    glColor3f(0.6, 0.27, 0.1);
+    glLineWidth(28.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.02, 0.0);
+    glVertex2f(-0.02, -0.49);
+    glEnd();
+    glColor3f(0.8, 0.5, 0.1);
+    glLineWidth(3.0);
+    glBegin(GL_LINES);
+    glVertex2f(-0.01, 0.0);
+    glVertex2f(-0.01, -0.49);
+    glEnd();
+
+    glColor3f(0.6, 0.27, 0.1);
+    glLineWidth(28.0);
+    glBegin(GL_LINES);
+    glVertex2f(0.02, 0.0);
+    glVertex2f(0.02, -0.49);
+    glEnd();
+    glColor3f(0.8, 0.5, 0.1);
+    glLineWidth(3.0);
+    glBegin(GL_LINES);
+    glVertex2f(0.03, 0.0);
+    glVertex2f(0.03, -0.49);
+    glEnd();
+
     // foundation left
     glColor3f(0.55f, 0.27f, 0.07f);
     glBegin(GL_POLYGON);
