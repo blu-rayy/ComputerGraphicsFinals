@@ -276,7 +276,7 @@ static void drawSkyGradient() {
     glEnd();
 }
 
-void drawSlide() {
+void drawSlide(float pgShade) {
     const int SEGMENTS = 80;
     const float START_X = -0.3f;  
     const float START_Y = -0.10f; 
@@ -305,7 +305,7 @@ void drawSlide() {
     }
 
     auto drawRail = [&](float innerDist, float outerDist, const float fillCol[3], int segMax) {
-        glColor3f(fillCol[0], fillCol[1], fillCol[2]);
+        glColor3f(fillCol[0] * pgShade, fillCol[1] * pgShade, fillCol[2] * pgShade);
         glBegin(GL_QUAD_STRIP);
         for (int i = 0; i <= segMax; ++i) {
             float ox = cx[i] + nx[i] * outerDist;
@@ -317,13 +317,13 @@ void drawSlide() {
         }
         glEnd();
 
-        const float midCol[3] = { (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f }; // ~0.73 gray
+    const float midCol[3] = { (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade }; // ~0.73 gray
         float delta = outerDist - innerDist;              
         float inset = fabsf(delta) * 0.20f;               
         bool leftSide = (outerDist > innerDist);          
         float stripeInner = leftSide ? innerDist + inset : innerDist - inset;
         float stripeOuter = leftSide ? outerDist - inset : outerDist + inset;
-        glColor3f(midCol[0], midCol[1], midCol[2]);
+    glColor3f(midCol[0], midCol[1], midCol[2]);
         glBegin(GL_QUAD_STRIP);
         for (int i = 0; i <= segMax; ++i) {
             float ox = cx[i] + nx[i] * stripeOuter;
@@ -335,8 +335,8 @@ void drawSlide() {
         }
         glEnd();
 
-        glLineWidth(1.0f);
-        glColor3f(0.18f, 0.18f, 0.18f);
+    glLineWidth(1.0f);
+    glColor3f(0.18f * pgShade, 0.18f * pgShade, 0.18f * pgShade);
         glBegin(GL_LINE_STRIP);
         for (int i = 0; i <= segMax; ++i) {
             float ox = cx[i] + nx[i] * outerDist;
@@ -351,8 +351,8 @@ void drawSlide() {
     float rightInner = -gap * 0.5f;                  
     float rightOuter = -gap * 0.5f - rightRailWidth;  
 
-    const float leftCol[3]  = {0.56f, 0.56f, 0.56f};
-    const float rightCol[3] = {0.90f, 0.90f, 0.90f};
+    const float leftCol[3]  = {0.56f * pgShade, 0.56f * pgShade, 0.56f * pgShade};
+    const float rightCol[3] = {0.90f * pgShade, 0.90f * pgShade, 0.90f * pgShade};
 
     float leftLenFrac = 1.0f;  
     if (leftLenFrac < 0.05f) leftLenFrac = 0.05f;
@@ -367,7 +367,7 @@ void drawSlide() {
     drawRail(leftInner,  leftOuter,  leftCol, leftSegMax);
     drawRail(rightInner, rightOuter, rightCol, rightSegMax);
 
-    const float midColCenter[3] = { (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f }; // ~0.73 gray
+    const float midColCenter[3] = { (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade }; // ~0.73 gray
     float leaveGap = 0.03f; 
     int centerStartIdx = 0;
     for (int i = 0; i <= SEGMENTS; ++i) {
@@ -567,8 +567,11 @@ void display() {
     glDisable(GL_LIGHTING);
     glDisable(GL_COLOR_MATERIAL);
 
+    // shade multiplier driven by sun (tGround == 0..1 -> darker to brighter)
+    float pgShade = mixf(0.5f, 1.0f, tGround);
+
     // roof left
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.7, 0.5);
     glVertex2f(-0.45, 0.8);
@@ -577,7 +580,7 @@ void display() {
     glEnd();
 
     // roof mid
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.44, 0.8);
     glVertex2f(-0.4, 0.8);
@@ -586,7 +589,7 @@ void display() {
     glEnd();
 
     // roof right
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.44, 0.8);
     glVertex2f(-0.4, 0.8);
@@ -594,17 +597,8 @@ void display() {
     glVertex2f(-0.2, 0.5);
     glEnd();
 
-    // ground
-    glColor3f(1.0, 1.0, 1.0);
-    glBegin(GL_POLYGON);
-    glVertex2f(-1.0, -0.6);
-    glVertex2f(1.0, -0.6);
-    glVertex2f(1.0, -1.0);
-    glVertex2f(-1.0, -1.0);
-    glEnd();
-
     //inside fence 
-    glColor3f(0.7, 0.3, 0.1);
+    glColor3f(0.7f * pgShade, 0.3f * pgShade, 0.1f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.65, 0.2);
     glVertex2f(-0.43, 0.17);
@@ -613,66 +607,66 @@ void display() {
     glEnd();
 
     //inside fence lines
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(15.0);
     glBegin(GL_LINES);
     glVertex2f(-0.63, 0.19);
     glVertex2f(-0.63, -0.2);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.62, 0.19);
     glVertex2f(-0.62, -0.2);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(15.0);
     glBegin(GL_LINES);
     glVertex2f(-0.59, 0.19);
     glVertex2f(-0.59, -0.2);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.58, 0.19);
     glVertex2f(-0.58, -0.2);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(15.0);
     glBegin(GL_LINES);
     glVertex2f(-0.55, 0.18);
     glVertex2f(-0.55, -0.2);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.54, 0.18);
     glVertex2f(-0.54, -0.2);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(13.0);
     glBegin(GL_LINES);
     glVertex2f(-0.51, 0.18);
     glVertex2f(-0.51, -0.2);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.50, 0.18);
     glVertex2f(-0.50, -0.2);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(13.0);
     glBegin(GL_LINES);
     glVertex2f(-0.475, 0.17);
     glVertex2f(-0.475, -0.2);
     glEnd();
 
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.465, 0.17);
@@ -680,14 +674,14 @@ void display() {
     glEnd();
 
     //inside fence horizontal lines
-    glColor3f(0.6, 0.25, 0.1);
+    glColor3f(0.6f * pgShade, 0.25f * pgShade, 0.1f * pgShade);
     glLineWidth(10.0);
     glBegin(GL_LINES);
     glVertex2f(-0.65, 0.17);
     glVertex2f(-0.43, 0.13);
     glEnd();
 
-    glColor3f(0.6, 0.25, 0.1);
+    glColor3f(0.6f * pgShade, 0.25f * pgShade, 0.1f * pgShade);
     glLineWidth(10.0);
     glBegin(GL_LINES);
     glVertex2f(-0.65, -0.17);
@@ -695,7 +689,7 @@ void display() {
     glEnd();
 
     //outside right fence
-    glColor3f(0.7, 0.3, 0.1);
+    glColor3f(0.7f * pgShade, 0.3f * pgShade, 0.1f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.16, 0.0);
     glVertex2f(0.03, 0.0);
@@ -703,65 +697,65 @@ void display() {
     glVertex2f(-0.16, -0.49);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.14, 0.0);
     glVertex2f(-0.14, -0.49);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.13, 0.0);
     glVertex2f(-0.13, -0.49);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.1, 0.0);
     glVertex2f(-0.1, -0.49);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.09, 0.0);
     glVertex2f(-0.09, -0.49);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.06, 0.0);
     glVertex2f(-0.06, -0.49);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.05, 0.0);
     glVertex2f(-0.05, -0.49);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.02, 0.0);
     glVertex2f(-0.02, -0.49);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.01, 0.0);
     glVertex2f(-0.01, -0.49);
     glEnd();
 
-    glColor3f(0.6, 0.27, 0.1);
+    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(0.02, 0.0);
     glVertex2f(0.02, -0.49);
     glEnd();
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(0.03, 0.0);
@@ -769,7 +763,7 @@ void display() {
     glEnd();
 
     // foundation outside right fence
-    glColor3f(0.55, 0.27, 0.07);
+    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(0.03, 0.08);
     glVertex2f(0.08, 0.08);
@@ -778,7 +772,7 @@ void display() {
     glEnd();
 
     // foundation outside left fence
-    glColor3f(0.55, 0.27, 0.07);
+    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.85, 0.2);
     glVertex2f(-0.8, 0.2);
@@ -787,7 +781,7 @@ void display() {
     glEnd();
 
     // foundation left
-    glColor3f(0.55, 0.27, 0.07);
+    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.69, 0.5);
     glVertex2f(-0.64, 0.5);
@@ -796,7 +790,7 @@ void display() {
     glEnd();
 
     // foundation mid
-    glColor3f(0.55, 0.27, 0.07);
+    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.45, 0.5);
     glVertex2f(-0.4, 0.5);
@@ -805,7 +799,7 @@ void display() {
     glEnd();
 
     // foundation right
-    glColor3f(0.55, 0.27, 0.07);
+    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.21, 0.5);
     glVertex2f(-0.16, 0.5);
@@ -814,7 +808,7 @@ void display() {
     glEnd();
 
     // floor line
-    glColor3f(0.55, 0.27, 0.07);
+    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     glLineWidth(3.0);
     glBegin(GL_LINES);
     glVertex2f(-0.69, -0.2);
@@ -822,7 +816,7 @@ void display() {
     glEnd();
 
     // climbing ramp
-    glColor3f(0.8, 0.5, 0.1);
+    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(-0.69, -0.2);
     glVertex2f(-0.43, -0.2);
@@ -831,7 +825,7 @@ void display() {
     glEnd();
 
     // slide floor
-    glColor3f(0.7f, 0.7f, 0.7f);
+    glColor3f(0.7f * pgShade, 0.7f * pgShade, 0.7f * pgShade);
     glBegin(GL_POLYGON);
     glVertex2f(0.02, -0.63);
     glVertex2f(0.095, -0.57);
@@ -839,7 +833,7 @@ void display() {
     glVertex2f(0.02, -0.68);
     glEnd();
     
-    drawSlide();
+    drawSlide(pgShade);
 
     glPopAttrib();
 
