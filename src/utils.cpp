@@ -1,3 +1,4 @@
+#include <GL/glew.h>
 #include "utils.h"
 #include <cmath>
 
@@ -29,4 +30,31 @@ void drawCircle(float cx, float cy, float radius, const float color[3]) {
         glVertex2f(cx + cosf(a) * radius, cy + sinf(a) * radius);
     }
     glEnd();
+}
+
+// Draw a persistent mesh
+void drawMesh(const Mesh &m) {
+    if (m.count == 0) return;
+    if (m.vao != 0) {
+        glBindVertexArray(m.vao);
+        glDrawArrays(m.mode, 0, m.count);
+        glBindVertexArray(0);
+    } else if (m.vbo != 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, m.vbo);
+        glEnableClientState(GL_VERTEX_ARRAY);
+        glVertexPointer(2, GL_FLOAT, 0, nullptr);
+        glDrawArrays(m.mode, 0, m.count);
+        glDisableClientState(GL_VERTEX_ARRAY);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+}
+
+// Draw the shared unit quad mesh transformed to position/size
+void drawUnitQuad(float cx, float cy, float w, float h) {
+    if (mesh_unit_quad.count == 0) return;
+    glPushMatrix();
+    glTranslatef(cx, cy, 0.0f);
+    glScalef(w, h, 1.0f);
+    drawMesh(mesh_unit_quad);
+    glPopMatrix();
 }

@@ -24,7 +24,6 @@ static bool sunVisible = true;     // when false, force midday sky and hide sun
 
 // Seesaw animation
 static float seesawAngle = 0.0f;
-static float seesawDirection = 1.0f;
 
 // vertex data (source for VBOs)
 static const GLfloat groundVerts[] = {
@@ -44,7 +43,50 @@ static const GLfloat trapVerts[] = {
 static GLuint vboHandles[2] = {0, 0}; // 0: ground, 1: trap
 static GLuint vaoHandles[2] = {0, 0}; // 0: ground, 1: trap
 static bool haveVBO = false;
-// current window aspect (width/height). Updated in reshape callback.
+// persistent mesh helper for non-axis-aligned geometry
+
+static Mesh mesh_roof_left = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_roof_mid  = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_roof_right = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_inside_fence = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_outside_right_fence = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_found_out_right = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_found_out_left = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_found_left = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_found_mid = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_found_right = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_climb_ramp = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_slide_floor = {0,0,0,GL_TRIANGLES};
+static Mesh mesh_left_rail = {0,0,0,GL_TRIANGLE_STRIP};
+static Mesh mesh_right_rail = {0,0,0,GL_TRIANGLE_STRIP};
+static Mesh mesh_left_outline = {0,0,0,GL_LINE_STRIP};
+static Mesh mesh_right_outline = {0,0,0,GL_LINE_STRIP};
+static Mesh mesh_center_strip = {0,0,0,GL_TRIANGLE_STRIP};
+static Mesh mesh_slide_end_fan = {0,0,0,GL_TRIANGLE_FAN};
+// mesh_unit_quad is defined non-static below so utils can reference it
+Mesh mesh_unit_quad = {0,0,0,GL_TRIANGLE_FAN};
+
+// seesaw meshes
+static Mesh mesh_seesaw_support_base = {0,0,0,GL_TRIANGLE_FAN};
+static Mesh mesh_seesaw_cap = {0,0,0,GL_TRIANGLE_FAN};
+static Mesh mesh_seesaw_plank = {0,0,0,GL_TRIANGLE_FAN};
+static Mesh mesh_seesaw_grip = {0,0,0,GL_TRIANGLE_FAN};
+static Mesh mesh_seesaw_left_seat = {0,0,0,GL_TRIANGLE_FAN};
+static Mesh mesh_seesaw_left_handle = {0,0,0,GL_TRIANGLE_FAN};
+static Mesh mesh_seesaw_right_seat = {0,0,0,GL_TRIANGLE_FAN};
+static Mesh mesh_seesaw_right_handle = {0,0,0,GL_TRIANGLE_FAN};
+
+// Line meshes for fence posts, horizontals and floor
+static Mesh mesh_inside_posts_thick = {0,0,0,GL_LINES};
+static Mesh mesh_inside_posts_thin  = {0,0,0,GL_LINES};
+static Mesh mesh_inside_horiz_top   = {0,0,0,GL_LINES};
+static Mesh mesh_inside_horiz_bottom= {0,0,0,GL_LINES};
+
+static Mesh mesh_outside_posts_thick = {0,0,0,GL_LINES};
+static Mesh mesh_outside_posts_thin  = {0,0,0,GL_LINES};
+
+static Mesh mesh_floor_line = {0,0,0,GL_LINES};
+
 static float winAspect = 1.0f;
 
 // Create VBOs and VAOs. Must be called after an OpenGL context exists and after glewInit().
@@ -93,9 +135,282 @@ static void createResources() {
     }
 
     haveVBO = true;
-}
 
-// Utility functions for colors and circle drawing are in utils.cpp
+    // Helper to create simple mesh (triangulate a convex polygon fan)
+    auto makeMeshFromPoly = [](const std::vector<float>& verts, Mesh &out){
+        // verts: x0,y0, x1,y1, ... assume polygon winding is suitable for triangle fan
+        out.count = (GLsizei)(verts.size() / 2);
+        out.mode = GL_TRIANGLE_FAN;
+        glGenBuffers(1, &out.vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, out.vbo);
+        glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        // VAO
+        if (GLEW_ARB_vertex_array_object || GLEW_VERSION_3_0) {
+            glGenVertexArrays(1, &out.vao);
+            glBindVertexArray(out.vao);
+            glBindBuffer(GL_ARRAY_BUFFER, out.vbo);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindVertexArray(0);
+        } else {
+            out.vao = 0;
+        }
+    };
+
+    // Create meshes for playground convex polygons (use triangle fan order)
+    makeMeshFromPoly(std::vector<float>{ -0.7f, 0.5f, -0.45f, 0.8f, -0.4f, 0.8f, -0.65f, 0.5f }, mesh_roof_left);
+    makeMeshFromPoly(std::vector<float>{ -0.44f, 0.8f, -0.4f, 0.8f, -0.4f, 0.5f, -0.44f, 0.5f }, mesh_roof_mid);
+    makeMeshFromPoly(std::vector<float>{ -0.44f, 0.8f, -0.4f, 0.8f, -0.15f, 0.5f, -0.2f, 0.5f }, mesh_roof_right);
+
+    makeMeshFromPoly(std::vector<float>{ -0.65f, 0.2f, -0.43f, 0.17f, -0.43f, -0.2f, -0.65f, -0.2f }, mesh_inside_fence);
+    makeMeshFromPoly(std::vector<float>{ -0.16f, 0.0f, 0.03f, 0.0f, 0.03f, -0.49f, -0.16f, -0.49f }, mesh_outside_right_fence);
+
+    makeMeshFromPoly(std::vector<float>{ 0.03f, 0.08f, 0.08f, 0.08f, 0.08f, -0.62f, 0.03f, -0.62f }, mesh_found_out_right);
+    makeMeshFromPoly(std::vector<float>{ -0.85f, 0.2f, -0.8f, 0.2f, -0.8f, -0.65f, -0.85f, -0.65f }, mesh_found_out_left);
+    makeMeshFromPoly(std::vector<float>{ -0.69f, 0.5f, -0.64f, 0.5f, -0.64f, -0.2f, -0.69f, -0.2f }, mesh_found_left);
+    makeMeshFromPoly(std::vector<float>{ -0.45f, 0.5f, -0.4f, 0.5f, -0.4f, -0.65f, -0.45f, -0.65f }, mesh_found_mid);
+    makeMeshFromPoly(std::vector<float>{ -0.21f, 0.5f, -0.16f, 0.5f, -0.16f, -0.62f, -0.21f, -0.62f }, mesh_found_right);
+
+    makeMeshFromPoly(std::vector<float>{ -0.69f, -0.2f, -0.43f, -0.2f, -0.62f, -0.7f, -0.9f, -0.65f }, mesh_climb_ramp);
+    makeMeshFromPoly(std::vector<float>{ 0.02f, -0.63f, 0.095f, -0.57f, 0.095f, -0.62f, 0.02f, -0.68f }, mesh_slide_floor);
+
+    // create unit quad centered at origin (vertices CCW)
+    std::vector<float> unitQuad = { -0.5f, -0.5f,  0.5f, -0.5f,  0.5f, 0.5f,  -0.5f, 0.5f };
+    makeMeshFromPoly(unitQuad, mesh_unit_quad);
+
+    // Create seesaw meshes (object-space coordinates used directly in drawSeesaw)
+    makeMeshFromPoly(std::vector<float>{ -0.12f, 0.0f, 0.12f, 0.0f, 0.08f, 0.18f, -0.08f, 0.18f }, mesh_seesaw_support_base);
+    makeMeshFromPoly(std::vector<float>{ -0.1f, 0.18f, 0.1f, 0.18f, 0.1f, 0.2f, -0.1f, 0.2f }, mesh_seesaw_cap);
+    makeMeshFromPoly(std::vector<float>{ -0.35f, -0.03f, 0.35f, -0.03f, 0.35f, 0.03f, -0.35f, 0.03f }, mesh_seesaw_plank);
+    makeMeshFromPoly(std::vector<float>{ -0.08f, -0.03f, 0.08f, -0.03f, 0.08f, 0.03f, -0.08f, 0.03f }, mesh_seesaw_grip);
+    makeMeshFromPoly(std::vector<float>{ -0.35f, 0.03f, -0.22f, 0.03f, -0.22f, 0.11f, -0.35f, 0.11f }, mesh_seesaw_left_seat);
+    makeMeshFromPoly(std::vector<float>{ -0.285f, 0.11f, -0.275f, 0.11f, -0.275f, 0.19f, -0.285f, 0.19f }, mesh_seesaw_left_handle);
+    makeMeshFromPoly(std::vector<float>{ 0.22f, 0.03f, 0.35f, 0.03f, 0.35f, 0.11f, 0.22f, 0.11f }, mesh_seesaw_right_seat);
+    makeMeshFromPoly(std::vector<float>{ 0.275f, 0.11f, 0.285f, 0.11f, 0.285f, 0.19f, 0.275f, 0.19f }, mesh_seesaw_right_handle);
+
+    // helper to upload arbitrary vertex arrays as a mesh with given mode (lines/strip/etc.)
+    auto uploadLines = [&](const std::vector<float>& verts, GLenum mode, Mesh &out){
+        out.count = (GLsizei)(verts.size() / 2);
+        out.mode = mode;
+        glGenBuffers(1, &out.vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, out.vbo);
+        glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        if (GLEW_ARB_vertex_array_object || GLEW_VERSION_3_0) {
+            glGenVertexArrays(1, &out.vao);
+            glBindVertexArray(out.vao);
+            glBindBuffer(GL_ARRAY_BUFFER, out.vbo);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindVertexArray(0);
+        } else {
+            out.vao = 0;
+        }
+    };
+
+    // Create fence post and horizontal line meshes (replace immediate-mode GL_LINES)
+    // inside fence thick posts (x, topY -> x, -0.2)
+    std::vector<float> insideThick = {
+        -0.63f, 0.19f,  -0.63f, -0.2f,
+        -0.59f, 0.19f,  -0.59f, -0.2f,
+        -0.55f, 0.18f,  -0.55f, -0.2f,
+        -0.51f, 0.18f,  -0.51f, -0.2f,
+        -0.475f,0.17f,  -0.475f,-0.2f
+    };
+    uploadLines(insideThick, GL_LINES, mesh_inside_posts_thick);
+
+    // inside fence thin highlight posts
+    std::vector<float> insideThin = {
+        -0.62f, 0.19f,  -0.62f, -0.2f,
+        -0.58f, 0.19f,  -0.58f, -0.2f,
+        -0.54f, 0.18f,  -0.54f, -0.2f,
+        -0.50f, 0.18f,  -0.50f, -0.2f,
+        -0.465f,0.17f,  -0.465f,-0.2f
+    };
+    uploadLines(insideThin, GL_LINES, mesh_inside_posts_thin);
+
+    // inside fence horizontals
+    std::vector<float> insideHorizTop = { -0.65f, 0.17f,  -0.43f, 0.13f };
+    std::vector<float> insideHorizBottom = { -0.65f, -0.17f,  -0.43f, -0.17f };
+    uploadLines(insideHorizTop, GL_LINES, mesh_inside_horiz_top);
+    uploadLines(insideHorizBottom, GL_LINES, mesh_inside_horiz_bottom);
+
+    // outside right fence thick posts
+    std::vector<float> outsideThick = {
+        -0.14f, 0.0f, -0.14f, -0.49f,
+        -0.1f,  0.0f, -0.1f,  -0.49f,
+        -0.06f, 0.0f, -0.06f, -0.49f,
+        -0.02f, 0.0f, -0.02f, -0.49f,
+         0.02f, 0.0f,  0.02f, -0.49f
+    };
+    uploadLines(outsideThick, GL_LINES, mesh_outside_posts_thick);
+
+    // outside right fence thin highlights
+    std::vector<float> outsideThin = {
+        -0.13f, 0.0f, -0.13f, -0.49f,
+        -0.09f, 0.0f, -0.09f, -0.49f,
+        -0.05f, 0.0f, -0.05f, -0.49f,
+        -0.01f, 0.0f, -0.01f, -0.49f,
+         0.03f, 0.0f,  0.03f, -0.49f
+    };
+    uploadLines(outsideThin, GL_LINES, mesh_outside_posts_thin);
+
+    // floor line
+    std::vector<float> floorLine = { -0.69f, -0.2f,  -0.16f, -0.2f };
+    uploadLines(floorLine, GL_LINES, mesh_floor_line);
+
+    // Create slide procedural meshes (rails, stripes, outlines) so drawSlide can be cheap
+    {
+        const int SEGMENTS = 80;
+        const float START_X = -0.3f;
+        const float START_Y = -0.10f;
+        const float END_X   = 0.1f;
+        const float END_Y   = -0.6f;
+        const float gap = 0.055f;
+        const float leftRailWidth   = 0.032f;
+        const float rightRailWidth  = 0.042f;
+
+        std::vector<float> cx(SEGMENTS + 1), cy(SEGMENTS + 1);
+        std::vector<float> nx(SEGMENTS + 1), ny(SEGMENTS + 1);
+        for (int i = 0; i <= SEGMENTS; ++i) {
+            float t = (float)i / SEGMENTS;
+            cx[i] = START_X + (END_X - START_X) * t;
+            cy[i] = START_Y + (END_Y - START_Y) * t - (0.18f * sinf(t * M_PI));
+            float dx_dt = (END_X - START_X);
+            float dy_dt = (END_Y - START_Y) - 0.18f * (M_PI * cosf(t * M_PI));
+            float nnx = -dy_dt, nny = dx_dt;
+            float nlen = sqrtf(nnx*nnx + nny*nny);
+            if (nlen == 0.0f) nlen = 1.0f;
+            nx[i] = nnx / nlen; ny[i] = nny / nlen;
+        }
+
+        float leftInner  =  gap * 0.5f;
+        float leftOuter  =  gap * 0.5f + leftRailWidth;
+        float rightInner = -gap * 0.5f;
+        float rightOuter = -gap * 0.5f - rightRailWidth;
+
+        float leftLenFrac = 1.0f;
+        int leftSegMax = (int)std::floor(SEGMENTS * leftLenFrac);
+        if (leftSegMax < 2) leftSegMax = 2;
+        float rightLenFrac = 0.82f;
+        int rightSegMax = (int)std::floor(SEGMENTS * rightLenFrac);
+        if (rightSegMax < 2) rightSegMax = 2;
+
+        // helper to upload a verts vector as a mesh with given mode
+        auto upload = [&](const std::vector<float>& verts, GLenum mode, Mesh &out){
+            out.count = (GLsizei)(verts.size() / 2);
+            out.mode = mode;
+            glGenBuffers(1, &out.vbo);
+            glBindBuffer(GL_ARRAY_BUFFER, out.vbo);
+            glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            if (GLEW_ARB_vertex_array_object || GLEW_VERSION_3_0) {
+                glGenVertexArrays(1, &out.vao);
+                glBindVertexArray(out.vao);
+                glBindBuffer(GL_ARRAY_BUFFER, out.vbo);
+                glEnableVertexAttribArray(0);
+                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindVertexArray(0);
+            } else {
+                out.vao = 0;
+            }
+        };
+
+        // left rail (triangle strip outer/inner interleaved)
+        std::vector<float> leftRailVerts;
+        for (int i = 0; i <= leftSegMax; ++i) {
+            float ox = cx[i] + nx[i] * leftOuter;
+            float oy = cy[i] + ny[i] * leftOuter;
+            float ix = cx[i] + nx[i] * leftInner;
+            float iy = cy[i] + ny[i] * leftInner;
+            leftRailVerts.push_back(ox); leftRailVerts.push_back(oy);
+            leftRailVerts.push_back(ix); leftRailVerts.push_back(iy);
+        }
+        upload(leftRailVerts, GL_TRIANGLE_STRIP, mesh_left_rail);
+
+        // right rail
+        std::vector<float> rightRailVerts;
+        for (int i = 0; i <= rightSegMax; ++i) {
+            float ox = cx[i] + nx[i] * rightOuter;
+            float oy = cy[i] + ny[i] * rightOuter;
+            float ix = cx[i] + nx[i] * rightInner;
+            float iy = cy[i] + ny[i] * rightInner;
+            rightRailVerts.push_back(ox); rightRailVerts.push_back(oy);
+            rightRailVerts.push_back(ix); rightRailVerts.push_back(iy);
+        }
+        upload(rightRailVerts, GL_TRIANGLE_STRIP, mesh_right_rail);
+
+        // outlines (line strips along outer rails)
+        std::vector<float> leftOutlineVerts;
+        for (int i = 0; i <= leftSegMax; ++i) {
+            float ox = cx[i] + nx[i] * leftOuter;
+            float oy = cy[i] + ny[i] * leftOuter;
+            leftOutlineVerts.push_back(ox); leftOutlineVerts.push_back(oy);
+        }
+        upload(leftOutlineVerts, GL_LINE_STRIP, mesh_left_outline);
+
+        std::vector<float> rightOutlineVerts;
+        for (int i = 0; i <= rightSegMax; ++i) {
+            float ox = cx[i] + nx[i] * rightOuter;
+            float oy = cy[i] + ny[i] * rightOuter;
+            rightOutlineVerts.push_back(ox); rightOutlineVerts.push_back(oy);
+        }
+        upload(rightOutlineVerts, GL_LINE_STRIP, mesh_right_outline);
+
+        // center stripe: determine center start/end as in original drawSlide
+        const float midColCenterVal = (0.90f + 0.56f) * 0.5f;
+        float leaveGap = 0.03f;
+        int centerStartIdx = 0;
+        for (int i = 0; i <= SEGMENTS; ++i) {
+            if (cy[i] <= (START_Y - leaveGap)) { centerStartIdx = i; break; }
+        }
+        int centerEndIdx = (leftSegMax < rightSegMax) ? leftSegMax : rightSegMax;
+        if (centerStartIdx < centerEndIdx) {
+            std::vector<float> centerVerts;
+            for (int i = centerStartIdx; i <= centerEndIdx; ++i) {
+                float lix = cx[i] + nx[i] * leftInner;
+                float liy = cy[i] + ny[i] * leftInner;
+                float rix = cx[i] + nx[i] * rightInner;
+                float riy = cy[i] + ny[i] * rightInner;
+                // triangle strip: rix, riy, lix, liy interleaved to form a strip from right to left
+                centerVerts.push_back(rix); centerVerts.push_back(riy);
+                centerVerts.push_back(lix); centerVerts.push_back(liy);
+            }
+            upload(centerVerts, GL_TRIANGLE_STRIP, mesh_center_strip);
+            // if the rails are asymmetric, create a triangle fan to cap the longer side (match original immediate-mode behavior)
+            if (leftSegMax != rightSegMax) {
+                int iShort = (leftSegMax < rightSegMax) ? leftSegMax : rightSegMax;
+                int iLong  = (leftSegMax > rightSegMax) ? leftSegMax : rightSegMax;
+                std::vector<float> fanVerts;
+                if (leftSegMax > rightSegMax) {
+                    float ax = cx[iShort] + nx[iShort] * rightInner;
+                    float ay = cy[iShort] + ny[iShort] * rightInner;
+                    // center point
+                    fanVerts.push_back(ax); fanVerts.push_back(ay);
+                    for (int i = iShort; i <= leftSegMax; ++i) {
+                        float lx = cx[i] + nx[i] * leftInner;
+                        float ly = cy[i] + ny[i] * leftInner;
+                        fanVerts.push_back(lx); fanVerts.push_back(ly);
+                    }
+                } else {
+                    float ax = cx[iShort] + nx[iShort] * leftInner;
+                    float ay = cy[iShort] + ny[iShort] * leftInner;
+                    fanVerts.push_back(ax); fanVerts.push_back(ay);
+                    for (int i = iShort; i <= rightSegMax; ++i) {
+                        float rx = cx[i] + nx[i] * rightInner;
+                        float ry = cy[i] + ny[i] * rightInner;
+                        fanVerts.push_back(rx); fanVerts.push_back(ry);
+                    }
+                }
+                if (!fanVerts.empty()) upload(fanVerts, GL_TRIANGLE_FAN, mesh_slide_end_fan);
+            }
+        }
+    }
+}
 
 // Draw a simple tree using circles for foliage and a rectangle trunk
 static void drawTree(float x, float y, float scale, float tGround) {
@@ -106,12 +421,8 @@ static void drawTree(float x, float y, float scale, float tGround) {
     // set normal for trunk quad so lighting behaves predictably
     glNormal3f(0.0f, 0.0f, 1.0f);
     glColor3f(trunk[0], trunk[1], trunk[2]);
-    glBegin(GL_QUADS);
-        glVertex2f(x - 0.04f * scale, y);
-        glVertex2f(x + 0.04f * scale, y);
-        glVertex2f(x + 0.04f * scale, y + 0.35f * scale);
-        glVertex2f(x - 0.04f * scale, y + 0.35f * scale);
-    glEnd();
+    // Draw trunk using the unit quad mesh (centered at origin). Place and scale accordingly.
+    drawUnitQuad(x, y + 0.175f * scale, 0.08f * scale, 0.35f * scale);
 
     // foliage colors (base), we'll modulate by tGround so they dim at night
     float darkBase[3] = {0.13f, 0.55f, 0.13f};
@@ -147,22 +458,12 @@ static void drawSeesaw(float x, float y, float angle, float scale, float tGround
     
     // Support base (wider trapezoid)
     glColor3f(supportColor[0], supportColor[1], supportColor[2]);
-    glBegin(GL_QUADS);
-        glVertex2f(-0.12f, 0.0f);
-        glVertex2f(0.12f, 0.0f);
-        glVertex2f(0.08f, 0.18f);
-        glVertex2f(-0.08f, 0.18f);
-    glEnd();
+    drawMesh(mesh_seesaw_support_base);
     
     // Support top cap (darker cyan with metallic look)
     float capColor[3] = { supportColor[0] * 0.75f, supportColor[1] * 0.75f, supportColor[2] * 0.85f };
     glColor3f(capColor[0], capColor[1], capColor[2]);
-    glBegin(GL_QUADS);
-        glVertex2f(-0.1f, 0.18f);
-        glVertex2f(0.1f, 0.18f);
-        glVertex2f(0.1f, 0.2f);
-        glVertex2f(-0.1f, 0.2f);
-    glEnd();
+    drawMesh(mesh_seesaw_cap);
     
     // Rotating plank assembly
     glPushMatrix();
@@ -175,23 +476,13 @@ static void drawSeesaw(float x, float y, float angle, float scale, float tGround
     float plankColor[3] = { plankBase[0] * plankMod, plankBase[1] * plankMod, plankBase[2] * plankMod };
     
     glColor3f(plankColor[0], plankColor[1], plankColor[2]);
-    glBegin(GL_QUADS);
-        glVertex2f(-0.35f, -0.03f);
-        glVertex2f(0.35f, -0.03f);
-        glVertex2f(0.35f, 0.03f);
-        glVertex2f(-0.35f, 0.03f);
-    glEnd();
+    drawMesh(mesh_seesaw_plank);
     
     // Center grip/pivot area (orange accent)
     float gripBase[3] = {1.0f, 0.65f, 0.0f};
     float gripColor[3] = { gripBase[0] * plankMod, gripBase[1] * plankMod, gripBase[2] * plankMod };
     glColor3f(gripColor[0], gripColor[1], gripColor[2]);
-    glBegin(GL_QUADS);
-        glVertex2f(-0.08f, -0.03f);
-        glVertex2f(0.08f, -0.03f);
-        glVertex2f(0.08f, 0.03f);
-        glVertex2f(-0.08f, 0.03f);
-    glEnd();
+    drawMesh(mesh_seesaw_grip);
     
     // Left seat - vivid red/magenta
     float leftSeatBase[3] = {1.0f, 0.1f, 0.35f};
@@ -199,40 +490,20 @@ static void drawSeesaw(float x, float y, float angle, float scale, float tGround
     float leftSeatColor[3] = { leftSeatBase[0] * seatMod, leftSeatBase[1] * seatMod, leftSeatBase[2] * seatMod };
     
     glColor3f(leftSeatColor[0], leftSeatColor[1], leftSeatColor[2]);
-    glBegin(GL_QUADS);
-        glVertex2f(-0.35f, 0.03f);
-        glVertex2f(-0.22f, 0.03f);
-        glVertex2f(-0.22f, 0.11f);
-        glVertex2f(-0.35f, 0.11f);
-    glEnd();
+    drawMesh(mesh_seesaw_left_seat);
     
     // Left handle (red/magenta)
-    glBegin(GL_QUADS);
-        glVertex2f(-0.285f, 0.11f);
-        glVertex2f(-0.275f, 0.11f);
-        glVertex2f(-0.275f, 0.19f);
-        glVertex2f(-0.285f, 0.19f);
-    glEnd();
+    drawMesh(mesh_seesaw_left_handle);
     
     // Right seat - bright lime green
     float rightSeatBase[3] = {0.2f, 0.95f, 0.25f};
     float rightSeatColor[3] = { rightSeatBase[0] * seatMod, rightSeatBase[1] * seatMod, rightSeatBase[2] * seatMod };
     
     glColor3f(rightSeatColor[0], rightSeatColor[1], rightSeatColor[2]);
-    glBegin(GL_QUADS);
-        glVertex2f(0.22f, 0.03f);
-        glVertex2f(0.35f, 0.03f);
-        glVertex2f(0.35f, 0.11f);
-        glVertex2f(0.22f, 0.11f);
-    glEnd();
+    drawMesh(mesh_seesaw_right_seat);
     
     // Right handle (lime green)
-    glBegin(GL_QUADS);
-        glVertex2f(0.275f, 0.11f);
-        glVertex2f(0.285f, 0.11f);
-        glVertex2f(0.285f, 0.19f);
-        glVertex2f(0.275f, 0.19f);
-    glEnd();
+    drawMesh(mesh_seesaw_right_handle);
     
     glPopMatrix();
     glPopMatrix();
@@ -277,144 +548,35 @@ static void drawSkyGradient() {
 }
 
 void drawSlide(float pgShade) {
-    const int SEGMENTS = 80;
-    const float START_X = -0.3f;  
-    const float START_Y = -0.10f; 
-    const float END_X   = 0.1f;   
-    const float END_Y   = -0.6f;  
-
-    const float gap             = 0.055f; 
-    const float leftRailWidth   = 0.032f; 
-    const float rightRailWidth  = 0.042f; 
-    const float outlineWidth    = 0.0045f;
-
-    std::vector<float> cx(SEGMENTS + 1), cy(SEGMENTS + 1);
-    std::vector<float> nx(SEGMENTS + 1), ny(SEGMENTS + 1);
-
-    for (int i = 0; i <= SEGMENTS; ++i) {
-        float t = (float)i / SEGMENTS;
-        cx[i] = START_X + (END_X - START_X) * t;
-        cy[i] = START_Y + (END_Y - START_Y) * t - (0.18f * sinf(t * M_PI));
-
-        float dx_dt = (END_X - START_X);
-        float dy_dt = (END_Y - START_Y) - 0.18f * (M_PI * cosf(t * M_PI));
-        float nnx = -dy_dt, nny = dx_dt;
-        float nlen = sqrtf(nnx*nnx + nny*nny);
-        if (nlen == 0.0f) nlen = 1.0f;
-        nx[i] = nnx / nlen; ny[i] = nny / nlen;
-    }
-
-    auto drawRail = [&](float innerDist, float outerDist, const float fillCol[3], int segMax) {
-        glColor3f(fillCol[0] * pgShade, fillCol[1] * pgShade, fillCol[2] * pgShade);
-        glBegin(GL_QUAD_STRIP);
-        for (int i = 0; i <= segMax; ++i) {
-            float ox = cx[i] + nx[i] * outerDist;
-            float oy = cy[i] + ny[i] * outerDist;
-            float ix = cx[i] + nx[i] * innerDist;
-            float iy = cy[i] + ny[i] * innerDist;
-            glVertex2f(ox, oy);
-            glVertex2f(ix, iy);
-        }
-        glEnd();
-
-    const float midCol[3] = { (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade }; // ~0.73 gray
-        float delta = outerDist - innerDist;              
-        float inset = fabsf(delta) * 0.20f;               
-        bool leftSide = (outerDist > innerDist);          
-        float stripeInner = leftSide ? innerDist + inset : innerDist - inset;
-        float stripeOuter = leftSide ? outerDist - inset : outerDist + inset;
-    glColor3f(midCol[0], midCol[1], midCol[2]);
-        glBegin(GL_QUAD_STRIP);
-        for (int i = 0; i <= segMax; ++i) {
-            float ox = cx[i] + nx[i] * stripeOuter;
-            float oy = cy[i] + ny[i] * stripeOuter;
-            float ix = cx[i] + nx[i] * stripeInner;
-            float iy = cy[i] + ny[i] * stripeInner;
-            glVertex2f(ox, oy);
-            glVertex2f(ix, iy);
-        }
-        glEnd();
-
-    glLineWidth(1.0f);
-    glColor3f(0.18f * pgShade, 0.18f * pgShade, 0.18f * pgShade);
-        glBegin(GL_LINE_STRIP);
-        for (int i = 0; i <= segMax; ++i) {
-            float ox = cx[i] + nx[i] * outerDist;
-            float oy = cy[i] + ny[i] * outerDist;
-            glVertex2f(ox, oy);
-        }
-        glEnd();
-    };
-
-    float leftInner  =  gap * 0.5f;                 
-    float leftOuter  =  gap * 0.5f + leftRailWidth;   
-    float rightInner = -gap * 0.5f;                  
-    float rightOuter = -gap * 0.5f - rightRailWidth;  
-
+    // Draw slide using precomputed meshes created in createResources().
     const float leftCol[3]  = {0.56f * pgShade, 0.56f * pgShade, 0.56f * pgShade};
     const float rightCol[3] = {0.90f * pgShade, 0.90f * pgShade, 0.90f * pgShade};
+    const float midColCenter[3] = { (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade };
 
-    float leftLenFrac = 1.0f;  
-    if (leftLenFrac < 0.05f) leftLenFrac = 0.05f;
-    int leftSegMax = (int)std::floor(SEGMENTS * leftLenFrac);
-    if (leftSegMax < 2) leftSegMax = 2;
+    // left rail
+    glColor3f(leftCol[0], leftCol[1], leftCol[2]);
+    drawMesh(mesh_left_rail);
 
-    float rightLenFrac = 0.82f; 
-    if (rightLenFrac < 0.05f) rightLenFrac = 0.05f; 
-    int rightSegMax = (int)std::floor(SEGMENTS * rightLenFrac);
-    if (rightSegMax < 2) rightSegMax = 2;
+    // right rail
+    glColor3f(rightCol[0], rightCol[1], rightCol[2]);
+    drawMesh(mesh_right_rail);
 
-    drawRail(leftInner,  leftOuter,  leftCol, leftSegMax);
-    drawRail(rightInner, rightOuter, rightCol, rightSegMax);
-
-    const float midColCenter[3] = { (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade }; // ~0.73 gray
-    float leaveGap = 0.03f; 
-    int centerStartIdx = 0;
-    for (int i = 0; i <= SEGMENTS; ++i) {
-        if (cy[i] <= (START_Y - leaveGap)) { centerStartIdx = i; break; }
-    }
-
-    int centerEndIdx = (leftSegMax < rightSegMax) ? leftSegMax : rightSegMax;
-    if (centerStartIdx < centerEndIdx) {
+    // center stripe (if available)
+    if (mesh_center_strip.count > 0) {
         glColor3f(midColCenter[0], midColCenter[1], midColCenter[2]);
-        glBegin(GL_QUAD_STRIP);
-        for (int i = centerStartIdx; i <= centerEndIdx; ++i) {
-            float lix = cx[i] + nx[i] * leftInner;
-            float liy = cy[i] + ny[i] * leftInner;
-            float rix = cx[i] + nx[i] * rightInner;
-            float riy = cy[i] + ny[i] * rightInner;
-            glVertex2f(lix, liy);
-            glVertex2f(rix, riy);
-        }
-        glEnd();
+        drawMesh(mesh_center_strip);
     }
 
-    if (leftSegMax != rightSegMax) {
-        int iShort = (leftSegMax < rightSegMax) ? leftSegMax : rightSegMax;
-        int iLong  = (leftSegMax > rightSegMax) ? leftSegMax : rightSegMax;
+    if (mesh_slide_end_fan.count > 0) {
         glColor3f(midColCenter[0], midColCenter[1], midColCenter[2]);
-        glBegin(GL_TRIANGLE_FAN);
-        if (leftSegMax > rightSegMax) {
-            float ax = cx[iShort] + nx[iShort] * rightInner;
-            float ay = cy[iShort] + ny[iShort] * rightInner;
-            glVertex2f(ax, ay);
-            for (int i = iShort; i <= leftSegMax; ++i) {
-                float lx = cx[i] + nx[i] * leftInner;
-                float ly = cy[i] + ny[i] * leftInner;
-                glVertex2f(lx, ly);
-            }
-        } else {
-            float ax = cx[iShort] + nx[iShort] * leftInner;
-            float ay = cy[iShort] + ny[iShort] * leftInner;
-            glVertex2f(ax, ay);
-            for (int i = iShort; i <= rightSegMax; ++i) {
-                float rx = cx[i] + nx[i] * rightInner;
-                float ry = cy[i] + ny[i] * rightInner;
-                glVertex2f(rx, ry);
-            }
-        }
-        glEnd();
+        drawMesh(mesh_slide_end_fan);
     }
+
+    // outlines
+    glLineWidth(1.0f);
+    glColor3f(0.18f * pgShade, 0.18f * pgShade, 0.18f * pgShade);
+    drawMesh(mesh_left_outline);
+    drawMesh(mesh_right_outline);
 }
 
 void display() {
@@ -572,266 +734,78 @@ void display() {
 
     // roof left
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.7, 0.5);
-    glVertex2f(-0.45, 0.8);
-    glVertex2f(-0.4, 0.8);
-    glVertex2f(-0.65, 0.5);
-    glEnd();
+    drawMesh(mesh_roof_left);
 
     // roof mid
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.44, 0.8);
-    glVertex2f(-0.4, 0.8);
-    glVertex2f(-0.4, 0.5);
-    glVertex2f(-0.44, 0.5);
-    glEnd();
+    drawMesh(mesh_roof_mid);
 
     // roof right
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.44, 0.8);
-    glVertex2f(-0.4, 0.8);
-    glVertex2f(-0.15, 0.5);
-    glVertex2f(-0.2, 0.5);
-    glEnd();
+    drawMesh(mesh_roof_right);
 
     //inside fence 
     glColor3f(0.7f * pgShade, 0.3f * pgShade, 0.1f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.65, 0.2);
-    glVertex2f(-0.43, 0.17);
-    glVertex2f(-0.43, -0.2);
-    glVertex2f(-0.65, -0.2);
-    glEnd();
+    drawMesh(mesh_inside_fence);
 
-    //inside fence lines
+    // inside fence posts (draw thick then thin highlights from precomputed meshes)
+    glLineWidth(15.0f);
     glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(15.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.63, 0.19);
-    glVertex2f(-0.63, -0.2);
-    glEnd();
+    drawMesh(mesh_inside_posts_thick);
+    glLineWidth(3.0f);
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.62, 0.19);
-    glVertex2f(-0.62, -0.2);
-    glEnd();
+    drawMesh(mesh_inside_posts_thin);
 
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(15.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.59, 0.19);
-    glVertex2f(-0.59, -0.2);
-    glEnd();
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.58, 0.19);
-    glVertex2f(-0.58, -0.2);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(15.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.55, 0.18);
-    glVertex2f(-0.55, -0.2);
-    glEnd();
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.54, 0.18);
-    glVertex2f(-0.54, -0.2);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(13.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.51, 0.18);
-    glVertex2f(-0.51, -0.2);
-    glEnd();
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.50, 0.18);
-    glVertex2f(-0.50, -0.2);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(13.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.475, 0.17);
-    glVertex2f(-0.475, -0.2);
-    glEnd();
-
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.465, 0.17);
-    glVertex2f(-0.465, -0.2);
-    glEnd();
-
-    //inside fence horizontal lines
+    // inside fence horizontal lines (precomputed)
+    glLineWidth(10.0f);
     glColor3f(0.6f * pgShade, 0.25f * pgShade, 0.1f * pgShade);
-    glLineWidth(10.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.65, 0.17);
-    glVertex2f(-0.43, 0.13);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.25f * pgShade, 0.1f * pgShade);
-    glLineWidth(10.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.65, -0.17);
-    glVertex2f(-0.43, -0.17);
-    glEnd();
+    drawMesh(mesh_inside_horiz_top);
+    drawMesh(mesh_inside_horiz_bottom);
 
     //outside right fence
     glColor3f(0.7f * pgShade, 0.3f * pgShade, 0.1f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.16, 0.0);
-    glVertex2f(0.03, 0.0);
-    glVertex2f(0.03, -0.49);
-    glVertex2f(-0.16, -0.49);
-    glEnd();
+    drawMesh(mesh_outside_right_fence);
 
+    // outside right fence posts (thick then thin highlights)
+    glLineWidth(28.0f);
     glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(28.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.14, 0.0);
-    glVertex2f(-0.14, -0.49);
-    glEnd();
+    drawMesh(mesh_outside_posts_thick);
+    glLineWidth(3.0f);
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.13, 0.0);
-    glVertex2f(-0.13, -0.49);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(28.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.1, 0.0);
-    glVertex2f(-0.1, -0.49);
-    glEnd();
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.09, 0.0);
-    glVertex2f(-0.09, -0.49);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(28.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.06, 0.0);
-    glVertex2f(-0.06, -0.49);
-    glEnd();
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.05, 0.0);
-    glVertex2f(-0.05, -0.49);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(28.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.02, 0.0);
-    glVertex2f(-0.02, -0.49);
-    glEnd();
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.01, 0.0);
-    glVertex2f(-0.01, -0.49);
-    glEnd();
-
-    glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
-    glLineWidth(28.0);
-    glBegin(GL_LINES);
-    glVertex2f(0.02, 0.0);
-    glVertex2f(0.02, -0.49);
-    glEnd();
-    glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(0.03, 0.0);
-    glVertex2f(0.03, -0.49);
-    glEnd();
+    drawMesh(mesh_outside_posts_thin);
 
     // foundation outside right fence
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(0.03, 0.08);
-    glVertex2f(0.08, 0.08);
-    glVertex2f(0.08, -0.62);
-    glVertex2f(0.03, -0.62);
-    glEnd();
+    drawMesh(mesh_found_out_right);
 
     // foundation outside left fence
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.85, 0.2);
-    glVertex2f(-0.8, 0.2);
-    glVertex2f(-0.8, -0.65);
-    glVertex2f(-0.85, -0.65);
-    glEnd();
+    drawMesh(mesh_found_out_left);
 
     // foundation left
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.69, 0.5);
-    glVertex2f(-0.64, 0.5);
-    glVertex2f(-0.64, -0.2);
-    glVertex2f(-0.69, -0.2);
-    glEnd();
+    drawMesh(mesh_found_left);
 
     // foundation mid
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.45, 0.5);
-    glVertex2f(-0.4, 0.5);
-    glVertex2f(-0.4, -0.65);
-    glVertex2f(-0.45, -0.65);
-    glEnd();
+    drawMesh(mesh_found_mid);
 
     // foundation right
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.21, 0.5);
-    glVertex2f(-0.16, 0.5);
-    glVertex2f(-0.16, -0.62);
-    glVertex2f(-0.21, -0.62);
-    glEnd();
+    drawMesh(mesh_found_right);
 
-    // floor line
+    // floor line 
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
-    glLineWidth(3.0);
-    glBegin(GL_LINES);
-    glVertex2f(-0.69, -0.2);
-    glVertex2f(-0.16, -0.2);
-    glEnd();
+    glLineWidth(3.0f);
+    drawMesh(mesh_floor_line);
 
     // climbing ramp
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(-0.69, -0.2);
-    glVertex2f(-0.43, -0.2);
-    glVertex2f(-0.62, -0.7);
-    glVertex2f(-0.9, -0.65);
-    glEnd();
+    drawMesh(mesh_climb_ramp);
 
     // slide floor
     glColor3f(0.7f * pgShade, 0.7f * pgShade, 0.7f * pgShade);
-    glBegin(GL_POLYGON);
-    glVertex2f(0.02, -0.63);
-    glVertex2f(0.095, -0.57);
-    glVertex2f(0.095, -0.62);
-    glVertex2f(0.02, -0.68);
-    glEnd();
+    drawMesh(mesh_slide_floor);
     
     drawSlide(pgShade);
 
@@ -843,17 +817,16 @@ void display() {
     glFlush();
 }
 
-// up and down arrow to move sun
-static void specialKeys(int key, int x, int y) {
-    (void)x; (void)y;
-    const float step = 0.06f;
+// Special keys handler: arrow up/down control sun elevation; left/right nudge seesaw
+static void specialKeys(int key, int /*x*/, int /*y*/) {
+    const float step = 0.05f;
     if (key == GLUT_KEY_UP) {
-        if (sunElevation < 1.0f) {
+        if (!sunVisible) {
+            sunVisible = true;
+            sunElevation = -1.0f + step;
+        } else {
             sunElevation += step;
             if (sunElevation > 1.0f) sunElevation = 1.0f;
-            sunVisible = true;
-        } else {
-            sunVisible = false;
         }
     } else if (key == GLUT_KEY_DOWN) {
         if (!sunVisible) {
@@ -863,6 +836,12 @@ static void specialKeys(int key, int x, int y) {
             sunElevation -= step;
             if (sunElevation < -1.0f) sunElevation = -1.0f;
         }
+    } else if (key == GLUT_KEY_LEFT) {
+        // tilt seesaw left
+        seesawAngle -= 5.0f;
+    } else if (key == GLUT_KEY_RIGHT) {
+        // tilt seesaw right
+        seesawAngle += 5.0f;
     }
     glutPostRedisplay();
 }
@@ -889,8 +868,6 @@ int main(int argc, char** argv) {
         glViewport(0,0,w,h);
         glMatrixMode(GL_PROJECTION);
         glLoadIdentity();
-        // Keep a fixed logical coordinate system (-1..1 both axes);
-        // we'll correct the sun drawing separately so circles stay circular.
         glOrtho(-1, 1, -1, 1, -1, 1);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
