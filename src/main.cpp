@@ -356,7 +356,7 @@ void display() {
 
     //inside fence lines
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(15.0);
+    glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.63, 0.19);
     glVertex2f(-0.63, -0.2);
@@ -369,7 +369,7 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(15.0);
+    glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.59, 0.19);
     glVertex2f(-0.59, -0.2);
@@ -382,7 +382,7 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(15.0);
+    glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.55, 0.18);
     glVertex2f(-0.55, -0.2);
@@ -395,7 +395,7 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(13.0);
+    glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.51, 0.18);
     glVertex2f(-0.51, -0.2);
@@ -408,12 +408,11 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(13.0);
+    glLineWidth(28.0);
     glBegin(GL_LINES);
     glVertex2f(-0.475, 0.17);
     glVertex2f(-0.475, -0.2);
     glEnd();
-
     glColor3f(0.8, 0.5, 0.1);
     glLineWidth(3.0);
     glBegin(GL_LINES);
@@ -422,18 +421,17 @@ void display() {
     glEnd();
 
     //inside fence horizontal lines
-    glColor3f(0.6, 0.25, 0.1);
+    glColor3f(0.5, 0.25, 0.1);
     glLineWidth(10.0);
     glBegin(GL_LINES);
-    glVertex2f(-0.65, 0.17);
-    glVertex2f(-0.43, 0.13);
+    glVertex2f(-0.65, 0.19);
+    glVertex2f(-0.43, 0.16);
     glEnd();
-
-    glColor3f(0.6, 0.25, 0.1);
+    glColor3f(0.5, 0.25, 0.1);
     glLineWidth(10.0);
     glBegin(GL_LINES);
-    glVertex2f(-0.65, -0.17);
-    glVertex2f(-0.43, -0.17);
+    glVertex2f(-0.65, -0.16);
+    glVertex2f(-0.43, -0.16);
     glEnd();
 
     //outside right fence
@@ -510,6 +508,15 @@ void display() {
     glVertex2f(0.03, -0.49);
     glEnd();
 
+    // foundation outside right fence
+    glColor3f(0.55, 0.27, 0.07);
+    glBegin(GL_POLYGON);
+    glVertex2f(0.03, 0.08);
+    glVertex2f(0.08, 0.08);
+    glVertex2f(0.08, -0.62);
+    glVertex2f(0.03, -0.62);
+    glEnd();
+
     // foundation left
     glColor3f(0.55f, 0.27f, 0.07f);
     glBegin(GL_POLYGON);
@@ -539,7 +546,7 @@ void display() {
 
     // floor line
     glColor3f(0.55f, 0.27f, 0.07f);
-    glLineWidth(3.0f);
+    glLineWidth(30.0f);
     glBegin(GL_LINES);
     glVertex2f(-0.69f, -0.2f);
     glVertex2f(-0.16f, -0.2f);
