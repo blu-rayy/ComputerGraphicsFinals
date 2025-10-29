@@ -22,6 +22,10 @@
 static float sunElevation = -0.2f; // default: sunset (orangey)
 static bool sunVisible = true;     // when false, force midday sky and hide sun
 
+// Seesaw animation
+static float seesawAngle = 0.0f;
+static float seesawDirection = 1.0f;
+
 // vertex data (source for VBOs)
 static const GLfloat groundVerts[] = {
     -1.0f, -1.0f,
@@ -126,6 +130,112 @@ static void drawTree(float x, float y, float scale, float tGround) {
     drawCircle(x + 0.08f * scale, y + 0.70f * scale, 0.13f * scale, mid);
     drawCircle(x, y + 0.85f * scale, 0.14f * scale, light);
     drawCircle(x, y + 1.00f * scale, 0.12f * scale, light);
+}
+
+// Draw a seesaw (Japanese playground style)
+static void drawSeesaw(float x, float y, float angle, float scale, float tGround) {
+    glPushMatrix();
+    glTranslatef(x, y, 0.0f);
+    glScalef(scale, scale, 1.0f);
+    
+    // Center support - vibrant cyan/turquoise metal
+    float supportBase[3] = {0.1f, 0.75f, 0.95f};
+    float supportMod = mixf(0.65f, 1.0f, tGround);
+    float supportColor[3] = { supportBase[0] * supportMod, supportBase[1] * supportMod, supportBase[2] * supportMod };
+    
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    
+    // Support base (wider trapezoid)
+    glColor3f(supportColor[0], supportColor[1], supportColor[2]);
+    glBegin(GL_QUADS);
+        glVertex2f(-0.12f, 0.0f);
+        glVertex2f(0.12f, 0.0f);
+        glVertex2f(0.08f, 0.18f);
+        glVertex2f(-0.08f, 0.18f);
+    glEnd();
+    
+    // Support top cap (darker cyan with metallic look)
+    float capColor[3] = { supportColor[0] * 0.75f, supportColor[1] * 0.75f, supportColor[2] * 0.85f };
+    glColor3f(capColor[0], capColor[1], capColor[2]);
+    glBegin(GL_QUADS);
+        glVertex2f(-0.1f, 0.18f);
+        glVertex2f(0.1f, 0.18f);
+        glVertex2f(0.1f, 0.2f);
+        glVertex2f(-0.1f, 0.2f);
+    glEnd();
+    
+    // Rotating plank assembly
+    glPushMatrix();
+    glTranslatef(0.0f, 0.19f, 0.0f);
+    glRotatef(angle, 0.0f, 0.0f, 1.0f);
+    
+    // Main plank - vivid yellow/gold
+    float plankBase[3] = {1.0f, 0.9f, 0.05f};
+    float plankMod = mixf(0.7f, 1.0f, tGround);
+    float plankColor[3] = { plankBase[0] * plankMod, plankBase[1] * plankMod, plankBase[2] * plankMod };
+    
+    glColor3f(plankColor[0], plankColor[1], plankColor[2]);
+    glBegin(GL_QUADS);
+        glVertex2f(-0.35f, -0.03f);
+        glVertex2f(0.35f, -0.03f);
+        glVertex2f(0.35f, 0.03f);
+        glVertex2f(-0.35f, 0.03f);
+    glEnd();
+    
+    // Center grip/pivot area (orange accent)
+    float gripBase[3] = {1.0f, 0.65f, 0.0f};
+    float gripColor[3] = { gripBase[0] * plankMod, gripBase[1] * plankMod, gripBase[2] * plankMod };
+    glColor3f(gripColor[0], gripColor[1], gripColor[2]);
+    glBegin(GL_QUADS);
+        glVertex2f(-0.08f, -0.03f);
+        glVertex2f(0.08f, -0.03f);
+        glVertex2f(0.08f, 0.03f);
+        glVertex2f(-0.08f, 0.03f);
+    glEnd();
+    
+    // Left seat - vivid red/magenta
+    float leftSeatBase[3] = {1.0f, 0.1f, 0.35f};
+    float seatMod = mixf(0.65f, 1.0f, tGround);
+    float leftSeatColor[3] = { leftSeatBase[0] * seatMod, leftSeatBase[1] * seatMod, leftSeatBase[2] * seatMod };
+    
+    glColor3f(leftSeatColor[0], leftSeatColor[1], leftSeatColor[2]);
+    glBegin(GL_QUADS);
+        glVertex2f(-0.35f, 0.03f);
+        glVertex2f(-0.22f, 0.03f);
+        glVertex2f(-0.22f, 0.11f);
+        glVertex2f(-0.35f, 0.11f);
+    glEnd();
+    
+    // Left handle (red/magenta)
+    glBegin(GL_QUADS);
+        glVertex2f(-0.285f, 0.11f);
+        glVertex2f(-0.275f, 0.11f);
+        glVertex2f(-0.275f, 0.19f);
+        glVertex2f(-0.285f, 0.19f);
+    glEnd();
+    
+    // Right seat - bright lime green
+    float rightSeatBase[3] = {0.2f, 0.95f, 0.25f};
+    float rightSeatColor[3] = { rightSeatBase[0] * seatMod, rightSeatBase[1] * seatMod, rightSeatBase[2] * seatMod };
+    
+    glColor3f(rightSeatColor[0], rightSeatColor[1], rightSeatColor[2]);
+    glBegin(GL_QUADS);
+        glVertex2f(0.22f, 0.03f);
+        glVertex2f(0.35f, 0.03f);
+        glVertex2f(0.35f, 0.11f);
+        glVertex2f(0.22f, 0.11f);
+    glEnd();
+    
+    // Right handle (lime green)
+    glBegin(GL_QUADS);
+        glVertex2f(0.275f, 0.11f);
+        glVertex2f(0.285f, 0.11f);
+        glVertex2f(0.285f, 0.19f);
+        glVertex2f(0.275f, 0.19f);
+    glEnd();
+    
+    glPopMatrix();
+    glPopMatrix();
 }
 
 // compute sky colors based on sunElevation
@@ -562,6 +672,9 @@ void display() {
     glEnd();
 
     glPopAttrib();
+
+    // Draw seesaw (positioned to the right of the slide, scaled down for depth)
+    drawSeesaw(0.5f, -0.5f, seesawAngle, 0.7f, tGround);
 
     glFlush();
 }
