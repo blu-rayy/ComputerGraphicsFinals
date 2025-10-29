@@ -166,6 +166,157 @@ static void drawSkyGradient() {
     glEnd();
 }
 
+void drawSlide() {
+    const int SEGMENTS = 80;
+    // Anchor the slide so the rails start above the floor line at (-0.5, -0.1)
+    const float START_X = -0.3f;   // anchor x at requested vertex
+    const float START_Y = -0.10f;   // above the floor line (y = -0.2)
+    const float END_X   = 0.1f;   // end a bit outward from right post
+    const float END_Y   = -0.6f;   // ground level
+
+    // Visual parameters (tweak as needed)
+    const float gap             = 0.055f; // clear space between the two rails
+    const float leftRailWidth   = 0.032f; // left rail slimmer
+    const float rightRailWidth  = 0.042f; // right rail slightly wider
+    const float outlineWidth    = 0.0045f; // thinner dark border around each rail
+
+    // Precompute base centerline and normals
+    std::vector<float> cx(SEGMENTS + 1), cy(SEGMENTS + 1);
+    std::vector<float> nx(SEGMENTS + 1), ny(SEGMENTS + 1);
+
+    for (int i = 0; i <= SEGMENTS; ++i) {
+        float t = (float)i / SEGMENTS;
+        cx[i] = START_X + (END_X - START_X) * t;
+        cy[i] = START_Y + (END_Y - START_Y) * t - (0.18f * sinf(t * M_PI));
+
+        float dx_dt = (END_X - START_X);
+        float dy_dt = (END_Y - START_Y) - 0.18f * (M_PI * cosf(t * M_PI));
+        float nnx = -dy_dt, nny = dx_dt;
+        float nlen = sqrtf(nnx*nnx + nny*nny);
+        if (nlen == 0.0f) nlen = 1.0f;
+        nx[i] = nnx / nlen; ny[i] = nny / nlen;
+    }
+
+    auto drawRail = [&](float innerDist, float outerDist, const float fillCol[3], int segMax) {
+        // Rail fill
+        glColor3f(fillCol[0], fillCol[1], fillCol[2]);
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= segMax; ++i) {
+            float ox = cx[i] + nx[i] * outerDist;
+            float oy = cy[i] + ny[i] * outerDist;
+            float ix = cx[i] + nx[i] * innerDist;
+            float iy = cy[i] + ny[i] * innerDist;
+            glVertex2f(ox, oy);
+            glVertex2f(ix, iy);
+        }
+        glEnd();
+
+        // Mid-tone stripe inside the rail (inset from both edges); keeps center gap untouched
+        const float midCol[3] = { (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f }; // ~0.73 gray
+        float delta = outerDist - innerDist;              // signed width along normal
+        float inset = fabsf(delta) * 0.20f;               // 20% margins -> 60% wide stripe
+        bool leftSide = (outerDist > innerDist);          // left rail: true, right rail: false
+        float stripeInner = leftSide ? innerDist + inset : innerDist - inset;
+        float stripeOuter = leftSide ? outerDist - inset : outerDist + inset;
+        glColor3f(midCol[0], midCol[1], midCol[2]);
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= segMax; ++i) {
+            float ox = cx[i] + nx[i] * stripeOuter;
+            float oy = cy[i] + ny[i] * stripeOuter;
+            float ix = cx[i] + nx[i] * stripeInner;
+            float iy = cy[i] + ny[i] * stripeInner;
+            glVertex2f(ox, oy);
+            glVertex2f(ix, iy);
+        }
+        glEnd();
+
+        glLineWidth(1.0f);
+        glColor3f(0.18f, 0.18f, 0.18f);
+        glBegin(GL_LINE_STRIP);
+        for (int i = 0; i <= segMax; ++i) {
+            float ox = cx[i] + nx[i] * outerDist;
+            float oy = cy[i] + ny[i] * outerDist;
+            glVertex2f(ox, oy);
+        }
+        glEnd();
+    };
+
+    float leftInner  =  gap * 0.5f;                 
+    float leftOuter  =  gap * 0.5f + leftRailWidth;   
+    float rightInner = -gap * 0.5f;                  
+    float rightOuter = -gap * 0.5f - rightRailWidth;  
+
+    // Swapped colors: left is darker, right is lighter
+    const float leftCol[3]  = {0.56f, 0.56f, 0.56f};
+    const float rightCol[3] = {0.90f, 0.90f, 0.90f};
+
+    // Per-rail length controls
+    float leftLenFrac = 1.0f;   // left rail full length
+    if (leftLenFrac < 0.05f) leftLenFrac = 0.05f;
+    int leftSegMax = (int)std::floor(SEGMENTS * leftLenFrac);
+    if (leftSegMax < 2) leftSegMax = 2;
+
+    float rightLenFrac = 0.82f; 
+    if (rightLenFrac < 0.05f) rightLenFrac = 0.05f; 
+    int rightSegMax = (int)std::floor(SEGMENTS * rightLenFrac);
+    if (rightSegMax < 2) rightSegMax = 2;
+
+    drawRail(leftInner,  leftOuter,  leftCol, leftSegMax);
+    drawRail(rightInner, rightOuter, rightCol, rightSegMax);
+
+    // Center fill between the rails, starting a bit below the top start Y to leave an opening
+    const float midColCenter[3] = { (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f }; // ~0.73 gray
+    float leaveGap = 0.03f; // vertical gap to leave above the channel near the start
+    int centerStartIdx = 0;
+    for (int i = 0; i <= SEGMENTS; ++i) {
+        if (cy[i] <= (START_Y - leaveGap)) { centerStartIdx = i; break; }
+    }
+    // Fill only while both rails are present to avoid floating fill beyond the shorter rail
+    int centerEndIdx = (leftSegMax < rightSegMax) ? leftSegMax : rightSegMax;
+    if (centerStartIdx < centerEndIdx) {
+        glColor3f(midColCenter[0], midColCenter[1], midColCenter[2]);
+        glBegin(GL_QUAD_STRIP);
+        for (int i = centerStartIdx; i <= centerEndIdx; ++i) {
+            // left inner edge point (along +normal)
+            float lix = cx[i] + nx[i] * leftInner;
+            float liy = cy[i] + ny[i] * leftInner;
+            // right inner edge point (along -normal)
+            float rix = cx[i] + nx[i] * rightInner;
+            float riy = cy[i] + ny[i] * rightInner;
+            glVertex2f(lix, liy);
+            glVertex2f(rix, riy);
+        }
+        glEnd();
+    }
+
+    if (leftSegMax != rightSegMax) {
+        int iShort = (leftSegMax < rightSegMax) ? leftSegMax : rightSegMax;
+        int iLong  = (leftSegMax > rightSegMax) ? leftSegMax : rightSegMax;
+        glColor3f(midColCenter[0], midColCenter[1], midColCenter[2]);
+        glBegin(GL_TRIANGLE_FAN);
+        if (leftSegMax > rightSegMax) {
+            float ax = cx[iShort] + nx[iShort] * rightInner;
+            float ay = cy[iShort] + ny[iShort] * rightInner;
+            glVertex2f(ax, ay);
+            for (int i = iShort; i <= leftSegMax; ++i) {
+                float lx = cx[i] + nx[i] * leftInner;
+                float ly = cy[i] + ny[i] * leftInner;
+                glVertex2f(lx, ly);
+            }
+        } else {
+            float ax = cx[iShort] + nx[iShort] * leftInner;
+            float ay = cy[iShort] + ny[iShort] * leftInner;
+            glVertex2f(ax, ay);
+            for (int i = iShort; i <= rightSegMax; ++i) {
+                float rx = cx[i] + nx[i] * rightInner;
+                float ry = cy[i] + ny[i] * rightInner;
+                glVertex2f(rx, ry);
+            }
+        }
+        glEnd();
+    }
+}
+
 void display() {
     glClear(GL_COLOR_BUFFER_BIT);
     drawSkyGradient();
@@ -303,8 +454,6 @@ void display() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glDisableClientState(GL_VERTEX_ARRAY);
 
-    
-
     // Draw trees left and right
     drawTree(-0.85f, -0.4f, 1.0f, tGround);
     drawTree(-0.65f, -0.5f, 0.9f, tGround);
@@ -319,30 +468,39 @@ void display() {
     glDisable(GL_COLOR_MATERIAL);
 
     // roof left
-    glColor3f(0.8f, 0.5f, 0.1f);
+    glColor3f(0.8, 0.5, 0.1);
     glBegin(GL_POLYGON);
-    glVertex2f(-0.7f, 0.5f);
-    glVertex2f(-0.45f, 0.8f);
-    glVertex2f(-0.4f, 0.8f);
-    glVertex2f(-0.65f, 0.5f);
+    glVertex2f(-0.7, 0.5);
+    glVertex2f(-0.45, 0.8);
+    glVertex2f(-0.4, 0.8);
+    glVertex2f(-0.65, 0.5);
     glEnd();
 
     // roof mid
-    glColor3f(0.8f, 0.5f, 0.1f);
+    glColor3f(0.8, 0.5, 0.1);
     glBegin(GL_POLYGON);
-    glVertex2f(-0.44f, 0.8f);
-    glVertex2f(-0.4f, 0.8f);
-    glVertex2f(-0.4f, 0.5f);
-    glVertex2f(-0.44f, 0.5f);
+    glVertex2f(-0.44, 0.8);
+    glVertex2f(-0.4, 0.8);
+    glVertex2f(-0.4, 0.5);
+    glVertex2f(-0.44, 0.5);
     glEnd();
 
     // roof right
-    glColor3f(0.8f, 0.5f, 0.1f);
+    glColor3f(0.8, 0.5, 0.1);
     glBegin(GL_POLYGON);
-    glVertex2f(-0.44f, 0.8f);
-    glVertex2f(-0.4f, 0.8f);
-    glVertex2f(-0.15f, 0.5f);
-    glVertex2f(-0.2f, 0.5f);
+    glVertex2f(-0.44, 0.8);
+    glVertex2f(-0.4, 0.8);
+    glVertex2f(-0.15, 0.5);
+    glVertex2f(-0.2, 0.5);
+    glEnd();
+
+    // ground
+    glColor3f(1.0, 1.0, 1.0);
+    glBegin(GL_POLYGON);
+    glVertex2f(-1.0, -0.6);
+    glVertex2f(1.0, -0.6);
+    glVertex2f(1.0, -1.0);
+    glVertex2f(-1.0, -1.0);
     glEnd();
 
     //inside fence 
@@ -356,7 +514,7 @@ void display() {
 
     //inside fence lines
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(28.0);
+    glLineWidth(15.0);
     glBegin(GL_LINES);
     glVertex2f(-0.63, 0.19);
     glVertex2f(-0.63, -0.2);
@@ -369,7 +527,7 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(28.0);
+    glLineWidth(15.0);
     glBegin(GL_LINES);
     glVertex2f(-0.59, 0.19);
     glVertex2f(-0.59, -0.2);
@@ -382,7 +540,7 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(28.0);
+    glLineWidth(15.0);
     glBegin(GL_LINES);
     glVertex2f(-0.55, 0.18);
     glVertex2f(-0.55, -0.2);
@@ -395,7 +553,7 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(28.0);
+    glLineWidth(13.0);
     glBegin(GL_LINES);
     glVertex2f(-0.51, 0.18);
     glVertex2f(-0.51, -0.2);
@@ -408,11 +566,12 @@ void display() {
     glEnd();
 
     glColor3f(0.6, 0.27, 0.1);
-    glLineWidth(28.0);
+    glLineWidth(13.0);
     glBegin(GL_LINES);
     glVertex2f(-0.475, 0.17);
     glVertex2f(-0.475, -0.2);
     glEnd();
+
     glColor3f(0.8, 0.5, 0.1);
     glLineWidth(3.0);
     glBegin(GL_LINES);
@@ -421,17 +580,18 @@ void display() {
     glEnd();
 
     //inside fence horizontal lines
-    glColor3f(0.5, 0.25, 0.1);
+    glColor3f(0.6, 0.25, 0.1);
     glLineWidth(10.0);
     glBegin(GL_LINES);
-    glVertex2f(-0.65, 0.19);
-    glVertex2f(-0.43, 0.16);
+    glVertex2f(-0.65, 0.17);
+    glVertex2f(-0.43, 0.13);
     glEnd();
-    glColor3f(0.5, 0.25, 0.1);
+
+    glColor3f(0.6, 0.25, 0.1);
     glLineWidth(10.0);
     glBegin(GL_LINES);
-    glVertex2f(-0.65, -0.16);
-    glVertex2f(-0.43, -0.16);
+    glVertex2f(-0.65, -0.17);
+    glVertex2f(-0.43, -0.17);
     glEnd();
 
     //outside right fence
@@ -517,49 +677,69 @@ void display() {
     glVertex2f(0.03, -0.62);
     glEnd();
 
-    // foundation left
-    glColor3f(0.55f, 0.27f, 0.07f);
+    // foundation outside left fence
+    glColor3f(0.55, 0.27, 0.07);
     glBegin(GL_POLYGON);
-    glVertex2f(-0.69f, 0.5f);
-    glVertex2f(-0.64f, 0.5f);
-    glVertex2f(-0.64f, -0.2f);
-    glVertex2f(-0.69f, -0.2f);
+    glVertex2f(-0.85, 0.2);
+    glVertex2f(-0.8, 0.2);
+    glVertex2f(-0.8, -0.65);
+    glVertex2f(-0.85, -0.65);
+    glEnd();
+
+    // foundation left
+    glColor3f(0.55, 0.27, 0.07);
+    glBegin(GL_POLYGON);
+    glVertex2f(-0.69, 0.5);
+    glVertex2f(-0.64, 0.5);
+    glVertex2f(-0.64, -0.2);
+    glVertex2f(-0.69, -0.2);
     glEnd();
 
     // foundation mid
-    glColor3f(0.55f, 0.27f, 0.07f);
+    glColor3f(0.55, 0.27, 0.07);
     glBegin(GL_POLYGON);
-    glVertex2f(-0.45f, 0.5f);
-    glVertex2f(-0.4f, 0.5f);
-    glVertex2f(-0.4f, -0.65f);
-    glVertex2f(-0.45f, -0.65f);
+    glVertex2f(-0.45, 0.5);
+    glVertex2f(-0.4, 0.5);
+    glVertex2f(-0.4, -0.65);
+    glVertex2f(-0.45, -0.65);
     glEnd();
 
     // foundation right
-    glColor3f(0.55f, 0.27f, 0.07f);
+    glColor3f(0.55, 0.27, 0.07);
     glBegin(GL_POLYGON);
-    glVertex2f(-0.21f, 0.5f);
-    glVertex2f(-0.16f, 0.5f);
-    glVertex2f(-0.16f, -0.62f);
-    glVertex2f(-0.21f, -0.62f);
+    glVertex2f(-0.21, 0.5);
+    glVertex2f(-0.16, 0.5);
+    glVertex2f(-0.16, -0.62);
+    glVertex2f(-0.21, -0.62);
     glEnd();
 
     // floor line
-    glColor3f(0.55f, 0.27f, 0.07f);
-    glLineWidth(30.0f);
+    glColor3f(0.55, 0.27, 0.07);
+    glLineWidth(3.0);
     glBegin(GL_LINES);
-    glVertex2f(-0.69f, -0.2f);
-    glVertex2f(-0.16f, -0.2f);
+    glVertex2f(-0.69, -0.2);
+    glVertex2f(-0.16, -0.2);
     glEnd();
 
     // climbing ramp
-    glColor3f(0.8f, 0.5f, 0.1f);
+    glColor3f(0.8, 0.5, 0.1);
     glBegin(GL_POLYGON);
-    glVertex2f(-0.69f, -0.2f);
-    glVertex2f(-0.43f, -0.2f);
-    glVertex2f(-0.62f, -0.7f);
-    glVertex2f(-0.9f, -0.65f);
+    glVertex2f(-0.69, -0.2);
+    glVertex2f(-0.43, -0.2);
+    glVertex2f(-0.62, -0.7);
+    glVertex2f(-0.9, -0.65);
     glEnd();
+
+    // slide floor
+    glColor3f(0.7f, 0.7f, 0.7f);
+    glBegin(GL_POLYGON);
+    glVertex2f(0.02, -0.63);
+    glVertex2f(0.095, -0.57);
+    glVertex2f(0.095, -0.62);
+    glVertex2f(0.02, -0.68);
+    glEnd();
+    
+    drawSlide();
 
     glPopAttrib();
 
