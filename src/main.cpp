@@ -168,19 +168,16 @@ static void drawSkyGradient() {
 
 void drawSlide() {
     const int SEGMENTS = 80;
-    // Anchor the slide so the rails start above the floor line at (-0.5, -0.1)
-    const float START_X = -0.3f;   // anchor x at requested vertex
-    const float START_Y = -0.10f;   // above the floor line (y = -0.2)
-    const float END_X   = 0.1f;   // end a bit outward from right post
-    const float END_Y   = -0.6f;   // ground level
+    const float START_X = -0.3f;  
+    const float START_Y = -0.10f; 
+    const float END_X   = 0.1f;   
+    const float END_Y   = -0.6f;  
 
-    // Visual parameters (tweak as needed)
-    const float gap             = 0.055f; // clear space between the two rails
-    const float leftRailWidth   = 0.032f; // left rail slimmer
-    const float rightRailWidth  = 0.042f; // right rail slightly wider
-    const float outlineWidth    = 0.0045f; // thinner dark border around each rail
+    const float gap             = 0.055f; 
+    const float leftRailWidth   = 0.032f; 
+    const float rightRailWidth  = 0.042f; 
+    const float outlineWidth    = 0.0045f;
 
-    // Precompute base centerline and normals
     std::vector<float> cx(SEGMENTS + 1), cy(SEGMENTS + 1);
     std::vector<float> nx(SEGMENTS + 1), ny(SEGMENTS + 1);
 
@@ -198,7 +195,6 @@ void drawSlide() {
     }
 
     auto drawRail = [&](float innerDist, float outerDist, const float fillCol[3], int segMax) {
-        // Rail fill
         glColor3f(fillCol[0], fillCol[1], fillCol[2]);
         glBegin(GL_QUAD_STRIP);
         for (int i = 0; i <= segMax; ++i) {
@@ -211,11 +207,10 @@ void drawSlide() {
         }
         glEnd();
 
-        // Mid-tone stripe inside the rail (inset from both edges); keeps center gap untouched
         const float midCol[3] = { (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f }; // ~0.73 gray
-        float delta = outerDist - innerDist;              // signed width along normal
-        float inset = fabsf(delta) * 0.20f;               // 20% margins -> 60% wide stripe
-        bool leftSide = (outerDist > innerDist);          // left rail: true, right rail: false
+        float delta = outerDist - innerDist;              
+        float inset = fabsf(delta) * 0.20f;               
+        bool leftSide = (outerDist > innerDist);          
         float stripeInner = leftSide ? innerDist + inset : innerDist - inset;
         float stripeOuter = leftSide ? outerDist - inset : outerDist + inset;
         glColor3f(midCol[0], midCol[1], midCol[2]);
@@ -246,12 +241,10 @@ void drawSlide() {
     float rightInner = -gap * 0.5f;                  
     float rightOuter = -gap * 0.5f - rightRailWidth;  
 
-    // Swapped colors: left is darker, right is lighter
     const float leftCol[3]  = {0.56f, 0.56f, 0.56f};
     const float rightCol[3] = {0.90f, 0.90f, 0.90f};
 
-    // Per-rail length controls
-    float leftLenFrac = 1.0f;   // left rail full length
+    float leftLenFrac = 1.0f;  
     if (leftLenFrac < 0.05f) leftLenFrac = 0.05f;
     int leftSegMax = (int)std::floor(SEGMENTS * leftLenFrac);
     if (leftSegMax < 2) leftSegMax = 2;
@@ -264,23 +257,20 @@ void drawSlide() {
     drawRail(leftInner,  leftOuter,  leftCol, leftSegMax);
     drawRail(rightInner, rightOuter, rightCol, rightSegMax);
 
-    // Center fill between the rails, starting a bit below the top start Y to leave an opening
     const float midColCenter[3] = { (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f, (0.90f + 0.56f) * 0.5f }; // ~0.73 gray
-    float leaveGap = 0.03f; // vertical gap to leave above the channel near the start
+    float leaveGap = 0.03f; 
     int centerStartIdx = 0;
     for (int i = 0; i <= SEGMENTS; ++i) {
         if (cy[i] <= (START_Y - leaveGap)) { centerStartIdx = i; break; }
     }
-    // Fill only while both rails are present to avoid floating fill beyond the shorter rail
+
     int centerEndIdx = (leftSegMax < rightSegMax) ? leftSegMax : rightSegMax;
     if (centerStartIdx < centerEndIdx) {
         glColor3f(midColCenter[0], midColCenter[1], midColCenter[2]);
         glBegin(GL_QUAD_STRIP);
         for (int i = centerStartIdx; i <= centerEndIdx; ++i) {
-            // left inner edge point (along +normal)
             float lix = cx[i] + nx[i] * leftInner;
             float liy = cy[i] + ny[i] * leftInner;
-            // right inner edge point (along -normal)
             float rix = cx[i] + nx[i] * rightInner;
             float riy = cy[i] + ny[i] * rightInner;
             glVertex2f(lix, liy);
