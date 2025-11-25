@@ -7,29 +7,6 @@
 #include <cstdlib>
 
 #include "utils.h"
-#include "postprocess.h"
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
-
-/* BUILD COMMAND
-
- g++ src/main.cpp src/utils.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -o app.exe
-
-*/
-
-// Sun elevation in normalized device coords Y (-1 bottom .. +1 top)
-#include <windows.h>
-#include <cstdio>
-#include <GL/glew.h>
-#include <GL/freeglut.h>
-#include <cmath>
-#include <vector>
-#include <cstdlib>
-
-#include "utils.h"
-#include "postprocess.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -113,9 +90,7 @@ static Mesh mesh_floor_line = {0,0,0,GL_LINES};
 static float winAspect = 1.0f;
 
 // Bloom/post-process parameters (tweakable at runtime)
-static float bloomThreshold = 0.98f;    // higher = fewer bright pixels pass
-static float bloomIntensity = 0.35f;    // multiplicative intensity of bloom
-static int   bloomBlurPasses = 3;       // number of separable blur passes
+// (Post-process/bloom removed)
 
 // Forward declarations
 static void createResources();
@@ -858,43 +833,13 @@ static void specialKeys(int key, int /*x*/, int /*y*/) {
 }
 
 // Keyboard controls for bloom tuning
-static void keyboard(unsigned char key, int /*x*/, int /*y*/) {
-    bool changed = false;
-    switch (key) {
-        case ']': // increase intensity
-            bloomIntensity += 0.1f; if (bloomIntensity > 5.0f) bloomIntensity = 5.0f; changed = true; break;
-        case '[': // decrease intensity
-            bloomIntensity -= 0.1f; if (bloomIntensity < 0.0f) bloomIntensity = 0.0f; changed = true; break;
-        case '>': // increase threshold (fewer pixels pass)
-        case '.':
-            bloomThreshold += 0.02f; if (bloomThreshold > 1.5f) bloomThreshold = 1.5f; changed = true; break;
-        case '<': // decrease threshold (more pixels pass)
-        case ',':
-            bloomThreshold -= 0.02f; if (bloomThreshold < 0.0f) bloomThreshold = 0.0f; changed = true; break;
-        case 'p': // increase blur passes
-            bloomBlurPasses += 1; if (bloomBlurPasses > 12) bloomBlurPasses = 12; changed = true; break;
-        case 'o': // decrease blur passes
-            bloomBlurPasses -= 1; if (bloomBlurPasses < 0) bloomBlurPasses = 0; changed = true; break;
-        case 'r': // reset to defaults
-            bloomThreshold = 0.98f; bloomIntensity = 0.35f; bloomBlurPasses = 3; changed = true; break;
-        default:
-            break;
-    }
-    if (changed) {
-        std::printf("Bloom: threshold=%.3f intensity=%.2f passes=%d\n", bloomThreshold, bloomIntensity, bloomBlurPasses);
-        glutPostRedisplay();
-    }
+static void keyboard(unsigned char /*key*/, int /*x*/, int /*y*/) {
+    // No keyboard controls for bloom (feature removed).
 }
 
 static void display() {
-    // Render scene into postprocess scene FBO
-    ppBeginScene();
+    // Render scene directly to default framebuffer
     renderSceneContents();
-    ppEndScene();
-
-    // Apply bloom and present to default framebuffer (runtime params)
-    ppApplyAndPresent(bloomThreshold, bloomIntensity, bloomBlurPasses);
-
     glutSwapBuffers();
 }
 
@@ -907,8 +852,7 @@ static void reshape(int w, int h) {
     glOrtho(-1, 1, -1, 1, -1, 1);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    // resize postprocess textures/FBOs to match new window size
-    ppResize(w, h);
+    // (No post-process to resize)
 }
 
 int main(int argc, char** argv) {
@@ -927,8 +871,7 @@ int main(int argc, char** argv) {
     // Create VBO/VAO resource
     createResources();
 
-    // Initialize post-process (shaders, screen quad). Resize will be invoked from reshape.
-    ppInit();
+    // (Post-process/bloom removed)
 
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
