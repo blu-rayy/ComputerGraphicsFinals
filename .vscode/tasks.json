@@ -5,9 +5,10 @@
       "label": "build",
       "type": "shell",
       "command": "g++",
-      "args": [
-  "src/main.cpp",
-  "src/utils.cpp",
+        "args": [
+      "src/main.cpp",
+      "src/utils.cpp",
+      "src/postprocess.cpp",
   "-Ilibs/include",
   "-Ilibs/freeglut/include",
         "-Llibs/freeglut/lib/x64",
