@@ -570,6 +570,51 @@ static void drawSkyGradient() {
     glEnd();
 }
 
+// Simple cloud drawing: overlapping circles. Clouds are animated horizontally.
+struct Cloud { float bx, by, scale, speed; };
+static Cloud clouds[] = {
+    { -0.8f, 0.72f, 0.24f, 0.03f },
+    {  0.15f, 0.78f, 0.18f, 0.02f },
+    {  0.7f, 0.66f, 0.30f, 0.015f }
+};
+
+// animation timer for clouds (seconds)
+static float lastCloudTime = 0.0f;
+
+static void drawCloud(float cx, float cy, float s, float tGround) {
+    // clouds are white but dim at night slightly
+    float base[3] = {1.0f, 1.0f, 1.0f};
+    float shade = mixf(0.7f, 1.0f, tGround);
+    float col[3] = { base[0] * shade, base[1] * shade, base[2] * shade };
+    // three overlapping circles
+    drawCircle(cx, cy, 0.50f * s, col);
+    drawCircle(cx - 0.35f * s, cy + 0.05f * s, 0.38f * s, col);
+    drawCircle(cx + 0.35f * s, cy + 0.05f * s, 0.38f * s, col);
+}
+
+static void drawClouds(float tGround) {
+    for (int i = 0; i < (int)(sizeof(clouds)/sizeof(clouds[0])); ++i) {
+        Cloud &c = clouds[i];
+        drawCloud(c.bx, c.by, c.scale, tGround);
+    }
+}
+
+// Idle/update function moves clouds based on elapsed time so they always animate
+static void updateCloudsIdle() {
+    float t = glutGet(GLUT_ELAPSED_TIME) * 0.001f; // seconds
+    if (lastCloudTime == 0.0f) lastCloudTime = t;
+    float dt = t - lastCloudTime;
+    lastCloudTime = t;
+    if (dt <= 0.0f) return;
+    for (int i = 0; i < (int)(sizeof(clouds)/sizeof(clouds[0])); ++i) {
+        clouds[i].bx += clouds[i].speed * dt;
+        // wrap around when off-screen (range approx -1.5 .. +1.5)
+        if (clouds[i].bx > 1.5f) clouds[i].bx -= 3.0f;
+        if (clouds[i].bx < -1.5f) clouds[i].bx += 3.0f;
+    }
+    glutPostRedisplay();
+}
+
 void drawSlide(float pgShade) {
     const float leftCol[3]  = {0.56f * pgShade, 0.56f * pgShade, 0.56f * pgShade};
     const float rightCol[3] = {0.90f * pgShade, 0.90f * pgShade, 0.90f * pgShade};
@@ -601,6 +646,15 @@ void drawSlide(float pgShade) {
 static void renderSceneContents() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     drawSkyGradient();
+
+    // draw clouds in the sky (compute a small day/night factor)
+    float cloudShade;
+    if (!sunVisible) cloudShade = 1.0f;
+    else if (sunElevation >= 0.0f) {
+        const float centerBias = 0.40f;
+        cloudShade = centerBias + (1.0f - centerBias) * mixf(0.0f, 1.0f, sunElevation);
+    } else cloudShade = (sunElevation + 1.0f) / 2.0f;
+    drawClouds(cloudShade);
 
     float sunColor[3];
     if (sunElevation >= 0.0f) {
@@ -879,6 +933,7 @@ int main(int argc, char** argv) {
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
     glutKeyboardFunc(keyboard);
+    glutIdleFunc(updateCloudsIdle);
     glutReshapeFunc(reshape);
 
     glutMainLoop();
