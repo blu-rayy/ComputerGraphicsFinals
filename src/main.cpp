@@ -22,7 +22,7 @@
 */
 
 // Sun elevation in normalized device coords Y (-1 bottom .. +1 top)
-static float sunElevation = -0.2f; // default: sunset (orangey)
+static float sunElevation = 1.0f; // default: start at very top (midday) before playback
 static bool sunVisible = true;     // when false, force midday sky and hide sun
 
 // Seesaw animation
@@ -187,6 +187,12 @@ private:
 
 static Subtitle subtitle;
 static int currentScene = 1;
+// forward declaration for WAV duration helper (defined below)
+static double getWavDurationSeconds(const char *path);
+// audio duration in seconds (0 if unknown)
+static double audioDurationSeconds = 0.0;
+// automatic sun animation enabled (can be toggled or disabled by manual keys)
+static bool autoSunEnabled = true;
 
 // Play audio file for a scene (expects files named scene1.wav, scene2.wav...)
 static void playScene(int sceneIndex) {
@@ -206,10 +212,30 @@ static void playScene(int sceneIndex) {
     }
     if (f) {
         fclose(f);
+        // compute duration from WAV header for sync
+        audioDurationSeconds = getWavDurationSeconds(path);
+        // try to open via MCI for more reliable control
+        char cmdOpen[1024];
+        snprintf(cmdOpen, sizeof(cmdOpen), "open \"%s\" type waveaudio alias sceneaudio", path);
+        if (mciSendStringA(cmdOpen, NULL, 0, NULL) == 0) {
+            if (mciSendStringA("play sceneaudio", NULL, 0, NULL) == 0) {
+                audioPlaying = true;
+                playbackStartTime = std::chrono::steady_clock::now();
+                autoSunEnabled = true;
+                sunElevation = 1.0f; // start at very top
+                std::printf("Playing %s (WAV via MCI)\n", path);
+                return;
+            }
+            // if play failed, close and fall back
+            mciSendStringA("close sceneaudio", NULL, 0, NULL);
+        }
+        // fallback to PlaySound if MCI failed
         if (PlaySoundA(path, NULL, SND_FILENAME | SND_ASYNC)) {
             audioPlaying = true;
             playbackStartTime = std::chrono::steady_clock::now();
-            std::printf("Playing %s (WAV via PlaySound)\n", path);
+            autoSunEnabled = true;
+            sunElevation = 1.0f; // start at very top
+            std::printf("Playing %s (WAV via PlaySound fallback)\n", path);
             return;
         } else {
             std::fprintf(stderr, "Failed to play WAV: %s\n", path);
@@ -225,11 +251,21 @@ static void playScene(int sceneIndex) {
         char cmd[1024];
         snprintf(cmd, sizeof(cmd), "open \"%s\" type mpegvideo alias sceneaudio", path);
         if (mciSendStringA(cmd, NULL, 0, NULL) == 0) {
-            mciSendStringA("play sceneaudio", NULL, 0, NULL);
-            audioPlaying = true;
-            playbackStartTime = std::chrono::steady_clock::now();
-            std::printf("Playing %s (MP3 via MCI)\n", path);
-            return;
+            if (mciSendStringA("play sceneaudio", NULL, 0, NULL) == 0) {
+                // try to query length (ms)
+                char buf[128] = {0};
+                if (mciSendStringA("status sceneaudio length", buf, sizeof(buf), NULL) == 0) {
+                    long ms = atol(buf);
+                    if (ms > 0) audioDurationSeconds = ms / 1000.0;
+                }
+                audioPlaying = true;
+                playbackStartTime = std::chrono::steady_clock::now();
+                autoSunEnabled = true;
+                sunElevation = 1.0f; // start at very top
+                std::printf("Playing %s (MP3 via MCI)\\n", path);
+                return;
+            }
+            mciSendStringA("close sceneaudio", NULL, 0, NULL);
         } else {
             std::fprintf(stderr, "Failed to open MP3 via MCI: %s\n", path);
             audioPlaying = false;
@@ -242,6 +278,53 @@ static void playScene(int sceneIndex) {
 
 static void restartScene() {
     playScene(currentScene);
+}
+
+// Helper: read WAV header to compute duration in seconds. Returns 0 on failure.
+static double getWavDurationSeconds(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0.0;
+    unsigned char buf[12];
+    if (fread(buf, 1, 12, f) != 12) { fclose(f); return 0.0; }
+    // check RIFF and WAVE
+    if (memcmp(buf, "RIFF", 4) != 0 || memcmp(buf+8, "WAVE", 4) != 0) { fclose(f); return 0.0; }
+    unsigned int dataBytes = 0;
+    unsigned int sampleRate = 0;
+    unsigned short channels = 0;
+    unsigned short bitsPerSample = 0;
+
+    // iterate chunks
+    while (!feof(f)) {
+        unsigned char hdr[8];
+        if (fread(hdr,1,8,f) != 8) break;
+        unsigned int chunkId = *(unsigned int*)hdr; // little-endian
+        unsigned int chunkSize = *(unsigned int*)(hdr+4);
+        // ensure chunkSize reasonable
+        if (memcmp(hdr, "fmt ", 4) == 0) {
+            unsigned char *fmt = (unsigned char*)malloc(chunkSize);
+            if (fread(fmt,1,chunkSize,f) != chunkSize) { free(fmt); break; }
+            if (chunkSize >= 16) {
+                unsigned short audioFormat = *(unsigned short*)(fmt+0);
+                channels = *(unsigned short*)(fmt+2);
+                sampleRate = *(unsigned int*)(fmt+4);
+                bitsPerSample = *(unsigned short*)(fmt+14);
+                (void)audioFormat;
+            }
+            free(fmt);
+        } else if (memcmp(hdr, "data", 4) == 0) {
+            dataBytes = chunkSize;
+            // seek past data
+            fseek(f, chunkSize, SEEK_CUR);
+        } else {
+            // skip chunk
+            fseek(f, chunkSize, SEEK_CUR);
+        }
+    }
+    fclose(f);
+    if (sampleRate == 0 || channels == 0 || bitsPerSample == 0 || dataBytes == 0) return 0.0;
+    double bytesPerSec = (double)sampleRate * (double)channels * ((double)bitsPerSample/8.0);
+    if (bytesPerSec <= 0.0) return 0.0;
+    return (double)dataBytes / bytesPerSec;
 }
 
 // UI buttons (bottom-right)
@@ -848,6 +931,25 @@ static void updateCloudsIdle() {
         if (clouds[i].bx > 1.5f) clouds[i].bx -= 3.0f;
         if (clouds[i].bx < -1.5f) clouds[i].bx += 3.0f;
     }
+    // update sun automatically during playback if enabled
+    if (audioPlaying && audioDurationSeconds > 0.0 && autoSunEnabled) {
+        using clock = std::chrono::steady_clock;
+        double elapsed = std::chrono::duration<double>(clock::now() - playbackStartTime).count();
+        if (elapsed >= audioDurationSeconds) {
+            // stop automatic mode at end of audio
+            audioPlaying = false;
+            subtitleEnabled = false;
+            // ensure sun reaches final elevation (slightly below middle)
+            float endE = -0.1f;
+            sunElevation = endE;
+        } else if (elapsed > 0.0) {
+            float startE = 1.0f; // very top
+            float endE = -0.1f;   // slightly below middle (one more frame down)
+            double frac = elapsed / audioDurationSeconds;
+            if (frac < 0.0) frac = 0.0; if (frac > 1.0) frac = 1.0;
+            sunElevation = (float)((1.0 - frac) * startE + frac * endE);
+        }
+    }
     glutPostRedisplay();
 }
 
@@ -1068,6 +1170,8 @@ static void renderSceneContents() {
 static void specialKeys(int key, int /*x*/, int /*y*/) {
     const float step = 0.05f;
     if (key == GLUT_KEY_UP) {
+        // manual control disables automatic sun animation
+        autoSunEnabled = false;
         if (!sunVisible) {
             sunVisible = true;
             sunElevation = -1.0f + step;
@@ -1076,6 +1180,8 @@ static void specialKeys(int key, int /*x*/, int /*y*/) {
             if (sunElevation > 1.0f) sunElevation = 1.0f;
         }
     } else if (key == GLUT_KEY_DOWN) {
+        // manual control disables automatic sun animation
+        autoSunEnabled = false;
         if (!sunVisible) {
             sunVisible = true;
             sunElevation = 1.0f - step;
@@ -1094,8 +1200,11 @@ static void specialKeys(int key, int /*x*/, int /*y*/) {
 }
 
 // Keyboard controls for bloom tuning
-static void keyboard(unsigned char /*key*/, int /*x*/, int /*y*/) {
-    // No keyboard controls for bloom (feature removed).
+static void keyboard(unsigned char key, int /*x*/, int /*y*/) {
+    if (key == 'a' || key == 'A') {
+        autoSunEnabled = !autoSunEnabled;
+        std::printf("Auto sun %s\n", autoSunEnabled ? "enabled" : "disabled");
+    }
 }
 
 static void display() {
