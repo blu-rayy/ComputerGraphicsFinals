@@ -7,6 +7,7 @@
 #include <cstdlib>
 
 #include "utils.h"
+#include <string>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -88,6 +89,72 @@ static Mesh mesh_outside_posts_thin  = {0,0,0,GL_LINES};
 static Mesh mesh_floor_line = {0,0,0,GL_LINES};
 
 static float winAspect = 1.0f;
+static int winW = 1280;
+static int winH = 720;
+
+// Simple helper for drawing anime-like subtitles (bottom-centered)
+class Subtitle {
+public:
+    Subtitle() : text(""), font(GLUT_BITMAP_HELVETICA_18), paddingX(12), paddingY(6), yOffset(36) {}
+    void setText(const std::string &t) { text = t; }
+    void draw(int windowW, int windowH) {
+        if (text.empty()) return;
+        // measure text width in pixels
+        int textW = glutBitmapLength(font, (const unsigned char*)text.c_str());
+        int textH = 18; // approx height for HELVETICA_18
+        int cx = windowW / 2;
+        int left = cx - (textW / 2) - paddingX;
+        int right = cx + (textW / 2) + paddingX;
+        int bottom = yOffset - paddingY;
+        int top = bottom + textH + paddingY * 2;
+
+        // save state
+        glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // Draw rectangle in window pixel coordinates by switching to an orthographic projection
+        glMatrixMode(GL_PROJECTION);
+        glPushMatrix();
+        glLoadIdentity();
+        glOrtho(0, windowW, 0, windowH, -1, 1);
+        glMatrixMode(GL_MODELVIEW);
+        glPushMatrix();
+        glLoadIdentity();
+
+        // background box (slightly transparent black)
+        glColor4f(0.0f, 0.0f, 0.0f, 0.6f);
+        glBegin(GL_QUADS);
+            glVertex2i(left, bottom);
+            glVertex2i(right, bottom);
+            glVertex2i(right, top);
+            glVertex2i(left, top);
+        glEnd();
+
+        // draw white text
+        glColor3f(1.0f, 1.0f, 1.0f);
+        // raster pos: left + paddingX, bottom + paddingY
+        glRasterPos2i(left + paddingX, bottom + paddingY);
+        for (char c : text) glutBitmapCharacter(font, c);
+
+        // restore matrices
+        glPopMatrix(); // modelview
+        glMatrixMode(GL_PROJECTION);
+        glPopMatrix();
+        glMatrixMode(GL_MODELVIEW);
+
+        glPopAttrib();
+    }
+
+private:
+    std::string text;
+    void *font;
+    int paddingX, paddingY;
+    int yOffset; // distance from bottom baseline in pixels
+};
+
+static Subtitle subtitle;
 
 // Bloom/post-process parameters (tweakable at runtime)
 // (Post-process/bloom removed)
@@ -840,12 +907,15 @@ static void keyboard(unsigned char /*key*/, int /*x*/, int /*y*/) {
 static void display() {
     // Render scene directly to default framebuffer
     renderSceneContents();
+    // draw subtitle overlay
+    subtitle.draw(winW, winH);
     glutSwapBuffers();
 }
 
 static void reshape(int w, int h) {
     if (h == 0) h = 1;
     winAspect = (float)w / (float)h;
+    winW = w; winH = h;
     glViewport(0,0,w,h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -870,6 +940,9 @@ int main(int argc, char** argv) {
 
     // Create VBO/VAO resource
     createResources();
+
+    // initialize subtitle text
+    subtitle.setText("Subaru and I would often come here to play");
 
     // (Post-process/bloom removed)
 

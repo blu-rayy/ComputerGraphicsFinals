@@ -1,6 +1,6 @@
 #include <windows.h>
 #include <cstdio>
-#include <glew.h>
+#include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <cmath>
 #include <vector>
