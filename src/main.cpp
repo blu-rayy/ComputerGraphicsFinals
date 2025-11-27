@@ -89,6 +89,13 @@ static Mesh mesh_floor_line = {0,0,0,GL_LINES};
 
 static float winAspect = 1.0f;
 
+// Bloom/post-process parameters (tweakable at runtime)
+// (Post-process/bloom removed)
+
+// Forward declarations
+static void createResources();
+static void renderSceneContents();
+
 // Create VBOs and VAOs. Must be called after an OpenGL context exists and after glewInit().
 static void createResources() {
     if (haveVBO || vboHandles[0] != 0) return; // already attempted
@@ -138,14 +145,12 @@ static void createResources() {
 
     // Helper to create simple mesh (triangulate a convex polygon fan)
     auto makeMeshFromPoly = [](const std::vector<float>& verts, Mesh &out){
-        // verts: x0,y0, x1,y1, ... assume polygon winding is suitable for triangle fan
         out.count = (GLsizei)(verts.size() / 2);
         out.mode = GL_TRIANGLE_FAN;
         glGenBuffers(1, &out.vbo);
         glBindBuffer(GL_ARRAY_BUFFER, out.vbo);
         glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
-        // VAO
         if (GLEW_ARB_vertex_array_object || GLEW_VERSION_3_0) {
             glGenVertexArrays(1, &out.vao);
             glBindVertexArray(out.vao);
@@ -212,7 +217,6 @@ static void createResources() {
     };
 
     // Create fence post and horizontal line meshes (replace immediate-mode GL_LINES)
-    // inside fence thick posts (x, topY -> x, -0.2)
     std::vector<float> insideThick = {
         -0.63f, 0.19f,  -0.63f, -0.2f,
         -0.59f, 0.19f,  -0.59f, -0.2f,
@@ -222,7 +226,6 @@ static void createResources() {
     };
     uploadLines(insideThick, GL_LINES, mesh_inside_posts_thick);
 
-    // inside fence thin highlight posts
     std::vector<float> insideThin = {
         -0.62f, 0.19f,  -0.62f, -0.2f,
         -0.58f, 0.19f,  -0.58f, -0.2f,
@@ -232,13 +235,11 @@ static void createResources() {
     };
     uploadLines(insideThin, GL_LINES, mesh_inside_posts_thin);
 
-    // inside fence horizontals
     std::vector<float> insideHorizTop = { -0.65f, 0.17f,  -0.43f, 0.13f };
     std::vector<float> insideHorizBottom = { -0.65f, -0.17f,  -0.43f, -0.17f };
     uploadLines(insideHorizTop, GL_LINES, mesh_inside_horiz_top);
     uploadLines(insideHorizBottom, GL_LINES, mesh_inside_horiz_bottom);
 
-    // outside right fence thick posts
     std::vector<float> outsideThick = {
         -0.14f, 0.0f, -0.14f, -0.49f,
         -0.1f,  0.0f, -0.1f,  -0.49f,
@@ -248,7 +249,6 @@ static void createResources() {
     };
     uploadLines(outsideThick, GL_LINES, mesh_outside_posts_thick);
 
-    // outside right fence thin highlights
     std::vector<float> outsideThin = {
         -0.13f, 0.0f, -0.13f, -0.49f,
         -0.09f, 0.0f, -0.09f, -0.49f,
@@ -258,7 +258,6 @@ static void createResources() {
     };
     uploadLines(outsideThin, GL_LINES, mesh_outside_posts_thin);
 
-    // floor line
     std::vector<float> floorLine = { -0.69f, -0.2f,  -0.16f, -0.2f };
     uploadLines(floorLine, GL_LINES, mesh_floor_line);
 
@@ -535,7 +534,6 @@ static void computeSkyColors(float e, float top[3], float bottom[3]) {
 
 static void drawSkyGradient() {
     float top[3], bottom[3];
-    // if the sun is hidden, force full daytime sky (midday)
     float e_for_sky = sunVisible ? sunElevation : 1.0f;
     computeSkyColors(e_for_sky, top, bottom);
 
@@ -547,21 +545,62 @@ static void drawSkyGradient() {
     glEnd();
 }
 
+// Simple cloud drawing: overlapping circles. Clouds are animated horizontally.
+struct Cloud { float bx, by, scale, speed; };
+static Cloud clouds[] = {
+    { -0.8f, 0.72f, 0.24f, 0.03f },
+    {  0.15f, 0.78f, 0.18f, 0.02f },
+    {  0.7f, 0.66f, 0.30f, 0.015f }
+};
+
+// animation timer for clouds (seconds)
+static float lastCloudTime = 0.0f;
+
+static void drawCloud(float cx, float cy, float s, float tGround) {
+    // clouds are white but dim at night slightly
+    float base[3] = {1.0f, 1.0f, 1.0f};
+    float shade = mixf(0.7f, 1.0f, tGround);
+    float col[3] = { base[0] * shade, base[1] * shade, base[2] * shade };
+    // three overlapping circles
+    drawCircle(cx, cy, 0.50f * s, col);
+    drawCircle(cx - 0.35f * s, cy + 0.05f * s, 0.38f * s, col);
+    drawCircle(cx + 0.35f * s, cy + 0.05f * s, 0.38f * s, col);
+}
+
+static void drawClouds(float tGround) {
+    for (int i = 0; i < (int)(sizeof(clouds)/sizeof(clouds[0])); ++i) {
+        Cloud &c = clouds[i];
+        drawCloud(c.bx, c.by, c.scale, tGround);
+    }
+}
+
+// Idle/update function moves clouds based on elapsed time so they always animate
+static void updateCloudsIdle() {
+    float t = glutGet(GLUT_ELAPSED_TIME) * 0.001f; // seconds
+    if (lastCloudTime == 0.0f) lastCloudTime = t;
+    float dt = t - lastCloudTime;
+    lastCloudTime = t;
+    if (dt <= 0.0f) return;
+    for (int i = 0; i < (int)(sizeof(clouds)/sizeof(clouds[0])); ++i) {
+        clouds[i].bx += clouds[i].speed * dt;
+        // wrap around when off-screen (range approx -1.5 .. +1.5)
+        if (clouds[i].bx > 1.5f) clouds[i].bx -= 3.0f;
+        if (clouds[i].bx < -1.5f) clouds[i].bx += 3.0f;
+    }
+    glutPostRedisplay();
+}
+
 void drawSlide(float pgShade) {
-    // Draw slide using precomputed meshes created in createResources().
     const float leftCol[3]  = {0.56f * pgShade, 0.56f * pgShade, 0.56f * pgShade};
     const float rightCol[3] = {0.90f * pgShade, 0.90f * pgShade, 0.90f * pgShade};
     const float midColCenter[3] = { (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade, (0.90f + 0.56f) * 0.5f * pgShade };
 
-    // left rail
     glColor3f(leftCol[0], leftCol[1], leftCol[2]);
     drawMesh(mesh_left_rail);
 
-    // right rail
     glColor3f(rightCol[0], rightCol[1], rightCol[2]);
     drawMesh(mesh_right_rail);
 
-    // center stripe (if available)
     if (mesh_center_strip.count > 0) {
         glColor3f(midColCenter[0], midColCenter[1], midColCenter[2]);
         drawMesh(mesh_center_strip);
@@ -572,22 +611,31 @@ void drawSlide(float pgShade) {
         drawMesh(mesh_slide_end_fan);
     }
 
-    // outlines
     glLineWidth(1.0f);
     glColor3f(0.18f * pgShade, 0.18f * pgShade, 0.18f * pgShade);
     drawMesh(mesh_left_outline);
     drawMesh(mesh_right_outline);
 }
 
-void display() {
-    glClear(GL_COLOR_BUFFER_BIT);
+// Render the scene contents into whatever framebuffer is currently bound.
+static void renderSceneContents() {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     drawSkyGradient();
+
+    // draw clouds in the sky (compute a small day/night factor)
+    float cloudShade;
+    if (!sunVisible) cloudShade = 1.0f;
+    else if (sunElevation >= 0.0f) {
+        const float centerBias = 0.40f;
+        cloudShade = centerBias + (1.0f - centerBias) * mixf(0.0f, 1.0f, sunElevation);
+    } else cloudShade = (sunElevation + 1.0f) / 2.0f;
+    drawClouds(cloudShade);
 
     float sunColor[3];
     if (sunElevation >= 0.0f) {
         sunColor[0] = 1.0f; sunColor[1] = 0.95f; sunColor[2] = 0.6f;
     } else {
-        float t = (sunElevation + 1.0f); 
+        float t = (sunElevation + 1.0f);
         float nightish[3] = {0.9f, 0.9f, 1.0f};
         float orange[3]   = {1.0f, 0.6f, 0.0f};
         mixColor(nightish, orange, t, sunColor);
@@ -595,118 +643,88 @@ void display() {
 
     float sunX = 0.0f;
     float sunY = sunElevation;
-    // slightly larger sun: increase min/max radius
-    float radius = mixf(0.04f, 0.14f, (sunElevation + 1.0f) / 2.0f); // sun smaller at night
+    float radius = mixf(0.04f, 0.14f, (sunElevation + 1.0f) / 2.0f);
 
     if (sunVisible) {
         glPushMatrix();
         glTranslatef(sunX, sunY, 0.0f);
         float sx = 1.0f, sy = 1.0f;
-        if (winAspect >= 1.0f) {
-            sx = 1.0f / winAspect;
-        } else {
-            sy = winAspect;
-        }
+        if (winAspect >= 1.0f) sx = 1.0f / winAspect; else sy = winAspect;
         glScalef(sx, sy, 1.0f);
         drawCircle(0.0f, 0.0f, radius, sunColor);
         glPopMatrix();
     }
 
-    // ground darkens at night
     float groundTopTint[3];
     float gt_day[3] = {0.8f, 0.8f, 0.8f};
     float gt_night[3] = {0.12f, 0.12f, 0.15f};
 
     float tGround;
-    if (!sunVisible) {
-        tGround = 1.0f;
-    } else if (sunElevation >= 0.0f) {
-        const float centerBias = 0.40f; 
+    if (!sunVisible) tGround = 1.0f;
+    else if (sunElevation >= 0.0f) {
+        const float centerBias = 0.40f;
         tGround = centerBias + (1.0f - centerBias) * mixf(0.0f, 1.0f, sunElevation);
-    } else {
-        tGround = (sunElevation + 1.0f) / 2.0f;
-    }
+    } else tGround = (sunElevation + 1.0f) / 2.0f;
     mixColor(gt_night, gt_day, tGround, groundTopTint);
 
-    // setup lighting centered on sun (dynamic intensity + range based on elevation)
     if (sunVisible) {
         glEnable(GL_LIGHTING);
         glEnable(GL_LIGHT0);
         glEnable(GL_COLOR_MATERIAL);
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
-    // normalize elevation to [0..1] (0 = lowest, 1 = highest)
-    float e_norm = (sunElevation + 1.0f) * 0.5f;
-    // soften curve so midday gets proportionally brighter
-    float e_smooth = powf(e_norm, 0.6f);
-
-    // intensity stronger during day, but tone down the midday peak
-    float intensity = mixf(0.15f, 2.5f, e_smooth);
-
-    // warm but not overwhelmingly so at noon
-    float warmColor[3] = {1.0f, 0.55f, 0.18f};
-    float finalColor[3];
-    // warmFactor: bias toward warmth at midday but cap below 1.0
-    float warmFactor = mixf(0.15f, 0.85f, e_smooth);
-    mixColor(sunColor, warmColor, warmFactor, finalColor);
+        float e_norm = (sunElevation + 1.0f) * 0.5f;
+        float e_smooth = powf(e_norm, 0.6f);
+        float intensity = mixf(0.15f, 2.5f, e_smooth);
+        float warmColor[3] = {1.0f, 0.55f, 0.18f};
+        float finalColor[3];
+        float warmFactor = mixf(0.15f, 0.85f, e_smooth);
+        mixColor(sunColor, warmColor, warmFactor, finalColor);
 
         float lightDiffuse[4]  = { finalColor[0] * intensity, finalColor[1] * intensity, finalColor[2] * intensity, 1.0f };
-    // ambient slightly higher at midday but reduced from previous extremes
-    float lightAmbient[4]  = { finalColor[0] * (0.06f + 0.32f * e_smooth), finalColor[1] * (0.06f + 0.32f * e_smooth), finalColor[2] * (0.06f + 0.32f * e_smooth), 1.0f };
-    float specMul = mixf(0.3f, 0.8f, e_smooth);
-    float lightSpecular[4] = { specMul, specMul, specMul, 1.0f };
-
+        float lightAmbient[4]  = { finalColor[0] * (0.06f + 0.32f * e_smooth), finalColor[1] * (0.06f + 0.32f * e_smooth), finalColor[2] * (0.06f + 0.32f * e_smooth), 1.0f };
+        float specMul = mixf(0.3f, 0.8f, e_smooth);
+        float lightSpecular[4] = { specMul, specMul, specMul, 1.0f };
         glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
         glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
         glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
 
-        // attenuation: decrease attenuation when sun is higher (wider radius)
-    // attenuation: much less attenuation at midday so light reaches farther
-    // increase attenuation at midday so the scene doesn't get overly washed
-    float linearAtt  = mixf(0.9f, 0.08f, e_smooth);
-    float quadAtt    = mixf(0.9f, 0.02f, e_smooth);
-    glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
-    glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, linearAtt);
-    glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, quadAtt);
+        float linearAtt  = mixf(0.9f, 0.08f, e_smooth);
+        float quadAtt    = mixf(0.9f, 0.02f, e_smooth);
+        glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
+        glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, linearAtt);
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, quadAtt);
 
-    // stronger specular highlight / shininess at midday
-    float matSpec[4] = { mixf(0.2f, 0.8f, e_smooth), mixf(0.2f, 0.8f, e_smooth), mixf(0.2f, 0.8f, e_smooth), 1.0f };
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
-    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, mixf(12.0f, 48.0f, e_smooth));
+        float matSpec[4] = { mixf(0.2f, 0.8f, e_smooth), mixf(0.2f, 0.8f, e_smooth), mixf(0.2f, 0.8f, e_smooth), 1.0f };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, mixf(12.0f, 48.0f, e_smooth));
 
-        // Position the light at the sun's world-space location (slightly in front)
-    // position the light further above the scene so midday illumination covers more
-    // position the light slightly closer to the scene to reduce overall wash at noon
-    glPushMatrix();
-    glLoadIdentity();
-    glTranslatef(sunX, sunY, 0.6f);
-    float lightPos[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
-    glPopMatrix();
+        glPushMatrix(); glLoadIdentity(); glTranslatef(sunX, sunY, 0.6f);
+        float lightPos[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        glLightfv(GL_LIGHT0, GL_POSITION, lightPos);
+        glPopMatrix();
     } else {
         glDisable(GL_LIGHT0);
         glDisable(GL_LIGHTING);
         glDisable(GL_COLOR_MATERIAL);
     }
 
-    // draw ground 
+    // draw ground
     glBindBuffer(GL_ARRAY_BUFFER, vboHandles[0]);
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(2, GL_FLOAT, 0, nullptr);
-    // set normal so lighting affects this plane
     glNormal3f(0.0f, 0.0f, 1.0f);
     glColor3f(groundTopTint[0], groundTopTint[1], groundTopTint[2]);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glDisableClientState(GL_VERTEX_ARRAY);
 
-    // muted ground at night
     float rubberColor[3] = {0.6f, 0.18f, 0.18f};
     rubberColor[0] *= mixf(0.5f, 1.0f, tGround);
     rubberColor[1] *= mixf(0.5f, 1.0f, tGround);
     rubberColor[2] *= mixf(0.5f, 1.0f, tGround);
 
-    // Draw rubber trapezoid 
+    // rubber trapezoid
     glBindBuffer(GL_ARRAY_BUFFER, vboHandles[1]);
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(2, GL_FLOAT, 0, nullptr);
@@ -716,7 +734,7 @@ void display() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glDisableClientState(GL_VERTEX_ARRAY);
 
-    // Draw trees left and right
+    // trees
     drawTree(-0.85f, -0.4f, 1.0f, tGround);
     drawTree(-0.65f, -0.5f, 0.9f, tGround);
     drawTree(-0.45f, -0.45f, 1.1f, tGround);
@@ -724,31 +742,22 @@ void display() {
     drawTree(0.65f, -0.5f, 0.95f, tGround);
     drawTree(0.85f, -0.4f, 1.05f, tGround);
 
-    // Draw playground structure (in front of trees)
     glPushAttrib(GL_ENABLE_BIT);
     glDisable(GL_LIGHTING);
     glDisable(GL_COLOR_MATERIAL);
 
-    // shade multiplier driven by sun (tGround == 0..1 -> darker to brighter)
     float pgShade = mixf(0.5f, 1.0f, tGround);
 
-    // roof left
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_roof_left);
-
-    // roof mid
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_roof_mid);
-
-    // roof right
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_roof_right);
 
-    //inside fence 
     glColor3f(0.7f * pgShade, 0.3f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_inside_fence);
 
-    // inside fence posts (draw thick then thin highlights from precomputed meshes)
     glLineWidth(15.0f);
     glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_inside_posts_thick);
@@ -756,17 +765,14 @@ void display() {
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_inside_posts_thin);
 
-    // inside fence horizontal lines (precomputed)
     glLineWidth(10.0f);
     glColor3f(0.6f * pgShade, 0.25f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_inside_horiz_top);
     drawMesh(mesh_inside_horiz_bottom);
 
-    //outside right fence
     glColor3f(0.7f * pgShade, 0.3f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_outside_right_fence);
 
-    // outside right fence posts (thick then thin highlights)
     glLineWidth(28.0f);
     glColor3f(0.6f * pgShade, 0.27f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_outside_posts_thick);
@@ -774,47 +780,27 @@ void display() {
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_outside_posts_thin);
 
-    // foundation outside right fence
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     drawMesh(mesh_found_out_right);
-
-    // foundation outside left fence
-    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     drawMesh(mesh_found_out_left);
-
-    // foundation left
-    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     drawMesh(mesh_found_left);
-
-    // foundation mid
-    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     drawMesh(mesh_found_mid);
-
-    // foundation right
-    glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     drawMesh(mesh_found_right);
 
-    // floor line 
     glColor3f(0.55f * pgShade, 0.27f * pgShade, 0.07f * pgShade);
     glLineWidth(3.0f);
     drawMesh(mesh_floor_line);
 
-    // climbing ramp
     glColor3f(0.8f * pgShade, 0.5f * pgShade, 0.1f * pgShade);
     drawMesh(mesh_climb_ramp);
 
-    // slide floor
     glColor3f(0.7f * pgShade, 0.7f * pgShade, 0.7f * pgShade);
     drawMesh(mesh_slide_floor);
-    
     drawSlide(pgShade);
 
     glPopAttrib();
 
-    // Draw seesaw (positioned to the right of the slide, scaled down for depth)
     drawSeesaw(0.5f, -0.5f, seesawAngle, 0.7f, tGround);
-
-    glFlush();
 }
 
 // Special keys handler: arrow up/down control sun elevation; left/right nudge seesaw
@@ -846,11 +832,34 @@ static void specialKeys(int key, int /*x*/, int /*y*/) {
     glutPostRedisplay();
 }
 
+// Keyboard controls for bloom tuning
+static void keyboard(unsigned char /*key*/, int /*x*/, int /*y*/) {
+    // No keyboard controls for bloom (feature removed).
+}
+
+static void display() {
+    // Render scene directly to default framebuffer
+    renderSceneContents();
+    glutSwapBuffers();
+}
+
+static void reshape(int w, int h) {
+    if (h == 0) h = 1;
+    winAspect = (float)w / (float)h;
+    glViewport(0,0,w,h);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(-1, 1, -1, 1, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    // (No post-process to resize)
+}
+
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_SINGLE | GLUT_RGB);
-    glutInitWindowSize(1920, 1080);
-    glutCreateWindow("Scene 1 - Sky & Sun");
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    glutInitWindowSize(1280, 720);
+    glutCreateWindow("Scene - Bloom Demo");
     
     glewExperimental = GL_TRUE; 
     GLenum glewErr = glewInit();
@@ -858,22 +867,18 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "GLEW initialization Failed: %s\n", glewGetErrorString(glewErr));
         return 1;
     }
+
     // Create VBO/VAO resource
     createResources();
+
+    // (Post-process/bloom removed)
+
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
-    glutReshapeFunc([](int w, int h){
-        if (h == 0) h = 1;
-        winAspect = (float)w / (float)h;
-        glViewport(0,0,w,h);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(-1, 1, -1, 1, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-    });
+    glutKeyboardFunc(keyboard);
+    glutIdleFunc(updateCloudsIdle);
+    glutReshapeFunc(reshape);
 
     glutMainLoop();
     return 0;
 }
-
