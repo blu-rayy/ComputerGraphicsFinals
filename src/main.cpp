@@ -1,15 +1,16 @@
 #include <windows.h>
-#include <cstdio>
 #include <GL/glew.h>
 #include <GL/freeglut.h>
+#include <mmsystem.h>
+
 #include <cmath>
 #include <vector>
 #include <cstdlib>
-
-#include "utils.h"
+#include <cstdio>
 #include <string>
 #include <chrono>
-#include <mmsystem.h>
+
+#include "utils.h"
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -94,347 +95,11 @@ static float winAspect = 1.0f;
 static int winW = 1280;
 static int winH = 720;
 
-// playback start timestamp for subtitle sync (declared early so Subtitle can reference it)
-static std::chrono::steady_clock::time_point playbackStartTime = std::chrono::steady_clock::time_point();
-
-// subtitle/audio state (declare before Subtitle so draw() can reference them)
-static bool subtitleEnabled = false; // subtitle off by default
-static bool audioPlaying = false;
-
-// Simple helper for drawing anime-like subtitles (bottom-centered)
-class Subtitle {
-public:
-    struct Entry { std::string text; float start; float end; };
-    Subtitle() : text(""), font(GLUT_BITMAP_HELVETICA_18), paddingX(12), paddingY(6), yOffset(36) {}
-    void setText(const std::string &t) { text = t; }
-    void setEntries(const std::vector<Entry> &e) { entries = e; }
-    void draw(int windowW, int windowH) {
-        // decide which text to draw
-        std::string drawText = text;
-        if (!entries.empty()) {
-            using clock = std::chrono::steady_clock;
-            if (!subtitleEnabled) return;
-            auto now = clock::now();
-            double elapsed = std::chrono::duration<double>(now - playbackStartTime).count();
-            bool found = false;
-            for (const auto &en : entries) {
-                if (elapsed >= en.start && elapsed <= en.end) {
-                    drawText = en.text;
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) return; // no subtitle at this time
-        } else {
-            if (text.empty()) return;
-        }
-
-        // measure text width in pixels
-        int textW = glutBitmapLength(font, (const unsigned char*)drawText.c_str());
-        int textH = 18; // approx height for HELVETICA_18
-        int cx = windowW / 2;
-        int left = cx - (textW / 2) - paddingX;
-        int right = cx + (textW / 2) + paddingX;
-        int bottom = yOffset - paddingY;
-        int top = bottom + textH + paddingY * 2;
-
-        // save state
-        glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
-        glDisable(GL_LIGHTING);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        // Draw rectangle in window pixel coordinates by switching to an orthographic projection
-        glMatrixMode(GL_PROJECTION);
-        glPushMatrix();
-        glLoadIdentity();
-        glOrtho(0, windowW, 0, windowH, -1, 1);
-        glMatrixMode(GL_MODELVIEW);
-        glPushMatrix();
-        glLoadIdentity();
-
-        // background box (slightly transparent black)
-        glColor4f(0.0f, 0.0f, 0.0f, 0.6f);
-        glBegin(GL_QUADS);
-            glVertex2i(left, bottom);
-            glVertex2i(right, bottom);
-            glVertex2i(right, top);
-            glVertex2i(left, top);
-        glEnd();
-
-        // draw white text
-        glColor3f(1.0f, 1.0f, 1.0f);
-        // raster pos: left + paddingX, bottom + paddingY
-        glRasterPos2i(left + paddingX, bottom + paddingY);
-        for (char c : drawText) glutBitmapCharacter(font, c);
-
-        // restore matrices
-        glPopMatrix(); // modelview
-        glMatrixMode(GL_PROJECTION);
-        glPopMatrix();
-        glMatrixMode(GL_MODELVIEW);
-
-        glPopAttrib();
-    }
-
-private:
-    std::string text;
-    std::vector<Entry> entries;
-    void *font;
-    int paddingX, paddingY;
-    int yOffset; // distance from bottom baseline in pixels
-};
-
-static Subtitle subtitle;
+// Audio, subtitles and UI moved to utils.*
+// current scene index remains here for scene management
 static int currentScene = 1;
-// forward declaration for WAV duration helper (defined below)
-static double getWavDurationSeconds(const char *path);
-// audio duration in seconds (0 if unknown)
-static double audioDurationSeconds = 0.0;
-// automatic sun animation enabled (can be toggled or disabled by manual keys)
-static bool autoSunEnabled = true;
 
-// Play audio file for a scene (expects files named scene1.wav, scene2.wav...)
-static void playScene(int sceneIndex) {
-    // stop any current playback (PlaySound and MCI)
-    PlaySound(NULL, NULL, 0);
-    mciSendStringA("close sceneaudio", NULL, 0, NULL);
-
-    char path[512];
-    FILE *f = NULL;
-
-    // Prefer WAV files first (audio\sceneN.wav then sceneN.wav)
-    snprintf(path, sizeof(path), "audio\\scene%d.wav", sceneIndex);
-    f = fopen(path, "rb");
-    if (!f) {
-        snprintf(path, sizeof(path), "scene%d.wav", sceneIndex);
-        f = fopen(path, "rb");
-    }
-    if (f) {
-        fclose(f);
-        // compute duration from WAV header for sync
-        audioDurationSeconds = getWavDurationSeconds(path);
-        // try to open via MCI for more reliable control
-        char cmdOpen[1024];
-        snprintf(cmdOpen, sizeof(cmdOpen), "open \"%s\" type waveaudio alias sceneaudio", path);
-        if (mciSendStringA(cmdOpen, NULL, 0, NULL) == 0) {
-            if (mciSendStringA("play sceneaudio", NULL, 0, NULL) == 0) {
-                audioPlaying = true;
-                playbackStartTime = std::chrono::steady_clock::now();
-                autoSunEnabled = true;
-                sunElevation = 1.0f; // start at very top
-                std::printf("Playing %s (WAV via MCI)\n", path);
-                return;
-            }
-            // if play failed, close and fall back
-            mciSendStringA("close sceneaudio", NULL, 0, NULL);
-        }
-        // fallback to PlaySound if MCI failed
-        if (PlaySoundA(path, NULL, SND_FILENAME | SND_ASYNC)) {
-            audioPlaying = true;
-            playbackStartTime = std::chrono::steady_clock::now();
-            autoSunEnabled = true;
-            sunElevation = 1.0f; // start at very top
-            std::printf("Playing %s (WAV via PlaySound fallback)\n", path);
-            return;
-        } else {
-            std::fprintf(stderr, "Failed to play WAV: %s\n", path);
-            audioPlaying = false;
-        }
-    }
-
-    // Fallback: try MP3 via MCI (audio\sceneN.mp3)
-    snprintf(path, sizeof(path), "audio\\scene%d.mp3", sceneIndex);
-    f = fopen(path, "rb");
-    if (f) {
-        fclose(f);
-        char cmd[1024];
-        snprintf(cmd, sizeof(cmd), "open \"%s\" type mpegvideo alias sceneaudio", path);
-        if (mciSendStringA(cmd, NULL, 0, NULL) == 0) {
-            if (mciSendStringA("play sceneaudio", NULL, 0, NULL) == 0) {
-                // try to query length (ms)
-                char buf[128] = {0};
-                if (mciSendStringA("status sceneaudio length", buf, sizeof(buf), NULL) == 0) {
-                    long ms = atol(buf);
-                    if (ms > 0) audioDurationSeconds = ms / 1000.0;
-                }
-                audioPlaying = true;
-                playbackStartTime = std::chrono::steady_clock::now();
-                autoSunEnabled = true;
-                sunElevation = 1.0f; // start at very top
-                std::printf("Playing %s (MP3 via MCI)\\n", path);
-                return;
-            }
-            mciSendStringA("close sceneaudio", NULL, 0, NULL);
-        } else {
-            std::fprintf(stderr, "Failed to open MP3 via MCI: %s\n", path);
-            audioPlaying = false;
-        }
-    }
-
-    std::fprintf(stderr, "No audio found for scene %d (looked for audio\\scene%d.wav, scene%d.wav, and audio\\scene%d.mp3)\n", sceneIndex, sceneIndex, sceneIndex, sceneIndex);
-    audioPlaying = false;
-}
-
-static void restartScene() {
-    playScene(currentScene);
-}
-
-// Helper: read WAV header to compute duration in seconds. Returns 0 on failure.
-static double getWavDurationSeconds(const char *path) {
-    FILE *f = fopen(path, "rb");
-    if (!f) return 0.0;
-    unsigned char buf[12];
-    if (fread(buf, 1, 12, f) != 12) { fclose(f); return 0.0; }
-    // check RIFF and WAVE
-    if (memcmp(buf, "RIFF", 4) != 0 || memcmp(buf+8, "WAVE", 4) != 0) { fclose(f); return 0.0; }
-    unsigned int dataBytes = 0;
-    unsigned int sampleRate = 0;
-    unsigned short channels = 0;
-    unsigned short bitsPerSample = 0;
-
-    // iterate chunks
-    while (!feof(f)) {
-        unsigned char hdr[8];
-        if (fread(hdr,1,8,f) != 8) break;
-        unsigned int chunkId = *(unsigned int*)hdr; // little-endian
-        unsigned int chunkSize = *(unsigned int*)(hdr+4);
-        // ensure chunkSize reasonable
-        if (memcmp(hdr, "fmt ", 4) == 0) {
-            unsigned char *fmt = (unsigned char*)malloc(chunkSize);
-            if (fread(fmt,1,chunkSize,f) != chunkSize) { free(fmt); break; }
-            if (chunkSize >= 16) {
-                unsigned short audioFormat = *(unsigned short*)(fmt+0);
-                channels = *(unsigned short*)(fmt+2);
-                sampleRate = *(unsigned int*)(fmt+4);
-                bitsPerSample = *(unsigned short*)(fmt+14);
-                (void)audioFormat;
-            }
-            free(fmt);
-        } else if (memcmp(hdr, "data", 4) == 0) {
-            dataBytes = chunkSize;
-            // seek past data
-            fseek(f, chunkSize, SEEK_CUR);
-        } else {
-            // skip chunk
-            fseek(f, chunkSize, SEEK_CUR);
-        }
-    }
-    fclose(f);
-    if (sampleRate == 0 || channels == 0 || bitsPerSample == 0 || dataBytes == 0) return 0.0;
-    double bytesPerSec = (double)sampleRate * (double)channels * ((double)bitsPerSample/8.0);
-    if (bytesPerSec <= 0.0) return 0.0;
-    return (double)dataBytes / bytesPerSec;
-}
-
-// UI buttons (bottom-right)
-struct UIButton { int cx, cy, r; };
-static UIButton btnPlay, btnRestart, btnNext;
-
-static void drawUIButtons(int windowW, int windowH) {
-    int margin = 16;
-    int spacing = 12;
-    int radius = 20;
-    int x = windowW - margin - radius;
-    int y = margin + radius;
-
-    btnNext = { x, y, radius };
-    btnRestart = { x - (radius*2 + spacing), y, radius };
-    btnPlay = { x - (radius*4 + spacing*2), y, radius };
-
-    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT);
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix(); glLoadIdentity(); glOrtho(0, windowW, 0, windowH, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix(); glLoadIdentity();
-
-    auto drawCircle = [&](int cx, int cy, int r, float a){
-        glColor4f(0.0f, 0.0f, 0.0f, a);
-        glBegin(GL_TRIANGLE_FAN);
-        glVertex2i(cx, cy);
-        for (int i=0;i<=32;i++){
-            float t = (float)i/32.0f * 2.0f * 3.14159265f;
-            glVertex2f(cx + cosf(t)*r, cy + sinf(t)*r);
-        }
-        glEnd();
-    };
-
-    drawCircle(btnPlay.cx, btnPlay.cy, btnPlay.r, 0.6f);
-    drawCircle(btnRestart.cx, btnRestart.cy, btnRestart.r, 0.55f);
-    drawCircle(btnNext.cx, btnNext.cy, btnNext.r, 0.55f);
-
-    glColor3f(1.0f,1.0f,1.0f);
-    // play triangle
-    glBegin(GL_TRIANGLES);
-        glVertex2f(btnPlay.cx - 6, btnPlay.cy - 8);
-        glVertex2f(btnPlay.cx - 6, btnPlay.cy + 8);
-        glVertex2f(btnPlay.cx + 8, btnPlay.cy);
-    glEnd();
-
-    // restart arc
-    glBegin(GL_LINE_STRIP);
-    for (int i=30;i<=300;i+=10) {
-        float a = i * 3.14159265f / 180.0f;
-        glVertex2f(btnRestart.cx + cosf(a) * (btnRestart.r - 6), btnRestart.cy + sinf(a) * (btnRestart.r - 6));
-    }
-    glEnd();
-    // draw restart arrow aligned to arc end
-    {
-        const float a_end = 300.0f * 3.14159265f / 180.0f;
-        float ex = btnRestart.cx + cosf(a_end) * (btnRestart.r - 6);
-        float ey = btnRestart.cy + sinf(a_end) * (btnRestart.r - 6);
-        const float tri = 4.0f;
-        glBegin(GL_TRIANGLES);
-            glVertex2f(ex - tri, ey - tri);
-            glVertex2f(ex - tri, ey + tri);
-            glVertex2f(ex + tri, ey);
-        glEnd();
-    }
-
-    // next double triangles
-    glBegin(GL_TRIANGLES);
-        glVertex2f(btnNext.cx - 8, btnNext.cy - 8);
-        glVertex2f(btnNext.cx - 8, btnNext.cy + 8);
-        glVertex2f(btnNext.cx + 0, btnNext.cy);
-        glVertex2f(btnNext.cx - 0, btnNext.cy - 8);
-        glVertex2f(btnNext.cx - 0, btnNext.cy + 8);
-        glVertex2f(btnNext.cx + 8, btnNext.cy);
-    glEnd();
-
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-    glPopAttrib();
-}
-
-static void onMouseClick(int button, int state, int x, int y) {
-    if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN) return;
-    int wy = winH - y;
-    auto hit = [&](const UIButton &b)->bool{
-        int dx = x - b.cx; int dy = wy - b.cy; return (dx*dx + dy*dy) <= (b.r*b.r);
-    };
-    if (hit(btnPlay)) {
-        currentScene = 1;
-        playScene(currentScene);
-        // only enable subtitle if playback actually started
-        subtitleEnabled = audioPlaying;
-    } else if (hit(btnRestart)) {
-        restartScene();
-        subtitleEnabled = audioPlaying;
-    } else if (hit(btnNext)) {
-        currentScene += 1;
-        playScene(currentScene);
-        subtitleEnabled = audioPlaying;
-    }
-}
-
-// Bloom/post-process parameters (tweakable at runtime)
-// (Post-process/bloom removed)
+// Bloom/post-process parameters removed from this build
 
 // Forward declarations
 static void createResources();
@@ -900,6 +565,7 @@ static Cloud clouds[] = {
 // animation timer for clouds (seconds)
 static float lastCloudTime = 0.0f;
 
+// === Cloud system ===
 static void drawCloud(float cx, float cy, float s, float tGround) {
     // clouds are white but dim at night slightly
     float base[3] = {1.0f, 1.0f, 1.0f};
@@ -931,21 +597,21 @@ static void updateCloudsIdle() {
         if (clouds[i].bx > 1.5f) clouds[i].bx -= 3.0f;
         if (clouds[i].bx < -1.5f) clouds[i].bx += 3.0f;
     }
-    // update sun automatically during playback if enabled
-    if (audioPlaying && audioDurationSeconds > 0.0 && autoSunEnabled) {
+    // update sun automatically during playback if enabled (moved to utils)
+    if (audio_isPlaying() && audio_getDurationSeconds() > 0.0 && audio_isAutoSunEnabled()) {
         using clock = std::chrono::steady_clock;
-        double elapsed = std::chrono::duration<double>(clock::now() - playbackStartTime).count();
-        if (elapsed >= audioDurationSeconds) {
+        double elapsed = std::chrono::duration<double>(clock::now() - audio_getStartTime()).count();
+        if (elapsed >= audio_getDurationSeconds()) {
             // stop automatic mode at end of audio
-            audioPlaying = false;
-            subtitleEnabled = false;
+            audio_setAutoSunEnabled(false);
+            subtitle_enable(false);
             // ensure sun reaches final elevation (slightly below middle)
             float endE = -0.1f;
             sunElevation = endE;
         } else if (elapsed > 0.0) {
             float startE = 1.0f; // very top
             float endE = -0.1f;   // slightly below middle (one more frame down)
-            double frac = elapsed / audioDurationSeconds;
+            double frac = elapsed / audio_getDurationSeconds();
             if (frac < 0.0) frac = 0.0; if (frac > 1.0) frac = 1.0;
             sunElevation = (float)((1.0 - frac) * startE + frac * endE);
         }
@@ -980,7 +646,7 @@ void drawSlide(float pgShade) {
     drawMesh(mesh_right_outline);
 }
 
-// Render the scene contents into whatever framebuffer is currently bound.
+// === Rendering ===
 static void renderSceneContents() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     drawSkyGradient();
@@ -1166,12 +832,13 @@ static void renderSceneContents() {
     drawSeesaw(0.5f, -0.5f, seesawAngle, 0.7f, tGround);
 }
 
+// === Input Callbacks ===
 // Special keys handler: arrow up/down control sun elevation; left/right nudge seesaw
 static void specialKeys(int key, int /*x*/, int /*y*/) {
     const float step = 0.05f;
     if (key == GLUT_KEY_UP) {
         // manual control disables automatic sun animation
-        autoSunEnabled = false;
+        audio_setAutoSunEnabled(false);
         if (!sunVisible) {
             sunVisible = true;
             sunElevation = -1.0f + step;
@@ -1181,7 +848,7 @@ static void specialKeys(int key, int /*x*/, int /*y*/) {
         }
     } else if (key == GLUT_KEY_DOWN) {
         // manual control disables automatic sun animation
-        autoSunEnabled = false;
+        audio_setAutoSunEnabled(false);
         if (!sunVisible) {
             sunVisible = true;
             sunElevation = 1.0f - step;
@@ -1199,19 +866,18 @@ static void specialKeys(int key, int /*x*/, int /*y*/) {
     glutPostRedisplay();
 }
 
-// Keyboard controls for bloom tuning
 static void keyboard(unsigned char key, int /*x*/, int /*y*/) {
     if (key == 'a' || key == 'A') {
-        autoSunEnabled = !autoSunEnabled;
-        std::printf("Auto sun %s\n", autoSunEnabled ? "enabled" : "disabled");
+        audio_setAutoSunEnabled(!audio_isAutoSunEnabled());
+        std::printf("Auto sun %s\n", audio_isAutoSunEnabled() ? "enabled" : "disabled");
     }
 }
 
 static void display() {
     // Render scene directly to default framebuffer
     renderSceneContents();
-    // draw subtitle overlay (only when enabled)
-    if (subtitleEnabled) subtitle.draw(winW, winH);
+    // draw subtitle overlay (utils decides whether to actually draw)
+    subtitle_draw(winW, winH);
     // draw UI buttons (bottom-right)
     drawUIButtons(winW, winH);
     glutSwapBuffers();
@@ -1247,15 +913,15 @@ int main(int argc, char** argv) {
     createResources();
 
     // initialize subtitle text and timed entries for scene1
-    subtitle.setText("Subaru and I would often come here to play");
+    subtitle_setText("Subaru and I would often come here to play");
     {
-        std::vector<Subtitle::Entry> entries;
-        Subtitle::Entry e;
+        std::vector<SubtitleEntry> entries;
+        SubtitleEntry e;
         e.text = "Subaru and I would often come here to play."; e.start = 0.0f; e.end = 3.0f; entries.push_back(e);
         e.text = "I really love this park."; e.start = 4.0f; e.end = 6.0f; entries.push_back(e);
         e.text = "I have made a lot of memories here..."; e.start = 9.5f; e.end = 11.5f; entries.push_back(e);
         e.text = "So I was hoping I could add another one today."; e.start = 12.0f; e.end = 15.0f; entries.push_back(e);
-        subtitle.setEntries(entries);
+        subtitle_setEntries(entries);
     }
 
     glutDisplayFunc(display);
