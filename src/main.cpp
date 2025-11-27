@@ -8,6 +8,7 @@
 
 #include "utils.h"
 #include <string>
+#include <chrono>
 #include <mmsystem.h>
 
 #ifndef M_PI
@@ -93,15 +94,43 @@ static float winAspect = 1.0f;
 static int winW = 1280;
 static int winH = 720;
 
+// playback start timestamp for subtitle sync (declared early so Subtitle can reference it)
+static std::chrono::steady_clock::time_point playbackStartTime = std::chrono::steady_clock::time_point();
+
+// subtitle/audio state (declare before Subtitle so draw() can reference them)
+static bool subtitleEnabled = false; // subtitle off by default
+static bool audioPlaying = false;
+
 // Simple helper for drawing anime-like subtitles (bottom-centered)
 class Subtitle {
 public:
+    struct Entry { std::string text; float start; float end; };
     Subtitle() : text(""), font(GLUT_BITMAP_HELVETICA_18), paddingX(12), paddingY(6), yOffset(36) {}
     void setText(const std::string &t) { text = t; }
+    void setEntries(const std::vector<Entry> &e) { entries = e; }
     void draw(int windowW, int windowH) {
-        if (text.empty()) return;
+        // decide which text to draw
+        std::string drawText = text;
+        if (!entries.empty()) {
+            using clock = std::chrono::steady_clock;
+            if (!subtitleEnabled) return;
+            auto now = clock::now();
+            double elapsed = std::chrono::duration<double>(now - playbackStartTime).count();
+            bool found = false;
+            for (const auto &en : entries) {
+                if (elapsed >= en.start && elapsed <= en.end) {
+                    drawText = en.text;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return; // no subtitle at this time
+        } else {
+            if (text.empty()) return;
+        }
+
         // measure text width in pixels
-        int textW = glutBitmapLength(font, (const unsigned char*)text.c_str());
+        int textW = glutBitmapLength(font, (const unsigned char*)drawText.c_str());
         int textH = 18; // approx height for HELVETICA_18
         int cx = windowW / 2;
         int left = cx - (textW / 2) - paddingX;
@@ -137,7 +166,7 @@ public:
         glColor3f(1.0f, 1.0f, 1.0f);
         // raster pos: left + paddingX, bottom + paddingY
         glRasterPos2i(left + paddingX, bottom + paddingY);
-        for (char c : text) glutBitmapCharacter(font, c);
+        for (char c : drawText) glutBitmapCharacter(font, c);
 
         // restore matrices
         glPopMatrix(); // modelview
@@ -150,14 +179,13 @@ public:
 
 private:
     std::string text;
+    std::vector<Entry> entries;
     void *font;
     int paddingX, paddingY;
     int yOffset; // distance from bottom baseline in pixels
 };
 
 static Subtitle subtitle;
-static bool subtitleEnabled = false; // subtitle off by default
-static bool audioPlaying = false;
 static int currentScene = 1;
 
 // Play audio file for a scene (expects files named scene1.wav, scene2.wav...)
@@ -180,6 +208,7 @@ static void playScene(int sceneIndex) {
         fclose(f);
         if (PlaySoundA(path, NULL, SND_FILENAME | SND_ASYNC)) {
             audioPlaying = true;
+            playbackStartTime = std::chrono::steady_clock::now();
             std::printf("Playing %s (WAV via PlaySound)\n", path);
             return;
         } else {
@@ -198,6 +227,7 @@ static void playScene(int sceneIndex) {
         if (mciSendStringA(cmd, NULL, 0, NULL) == 0) {
             mciSendStringA("play sceneaudio", NULL, 0, NULL);
             audioPlaying = true;
+            playbackStartTime = std::chrono::steady_clock::now();
             std::printf("Playing %s (MP3 via MCI)\n", path);
             return;
         } else {
@@ -1107,8 +1137,17 @@ int main(int argc, char** argv) {
     // Create VBO/VAO resource
     createResources();
 
-    // initialize subtitle text
+    // initialize subtitle text and timed entries for scene1
     subtitle.setText("Subaru and I would often come here to play");
+    {
+        std::vector<Subtitle::Entry> entries;
+        Subtitle::Entry e;
+        e.text = "Subaru and I would often come here to play."; e.start = 0.0f; e.end = 3.0f; entries.push_back(e);
+        e.text = "I really love this park."; e.start = 4.0f; e.end = 6.0f; entries.push_back(e);
+        e.text = "I have made a lot of memories here..."; e.start = 9.5f; e.end = 11.5f; entries.push_back(e);
+        e.text = "So I was hoping I could add another one today."; e.start = 12.0f; e.end = 15.0f; entries.push_back(e);
+        subtitle.setEntries(entries);
+    }
 
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
