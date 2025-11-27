@@ -8,6 +8,7 @@
 #include <chrono>
 #include <windows.h>
 #include <mmsystem.h>
+#include "cake_scene.h"
 
 /* BUILD COMMAND
 
@@ -217,29 +218,75 @@ void audio_playScene(int sceneIndex) {
 
 // UI drawing and mouse handling
 void drawUIButtons(int windowW, int windowH) {
-    int margin = 16, spacing = 12, radius = 20;
-    int x = windowW - margin - radius; int y = margin + radius;
-    btnNext = { x, y, radius };
-    btnRestart = { x - (radius*2 + spacing), y, radius };
-    btnPlay = { x - (radius*4 + spacing*2), y, radius };
+        int margin = 16, spacing = 12, radius = 20;
+        int x = windowW - margin - radius; int y = margin + radius;
+        btnNext = { x, y, radius };
+        btnRestart = { x - (radius*2 + spacing), y, radius };
+        btnPlay = { x - (radius*4 + spacing*2), y, radius };
 
-    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT);
-    glDisable(GL_LIGHTING); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); glOrtho(0, windowW, 0, windowH, -1, 1);
-    glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
+        glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_LINE_BIT);
+        glDisable(GL_LIGHTING);
+        // Ensure the UI overlay is drawn on top of 3D scene contents
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glLineWidth(2.5f);
 
-    auto drawCircle = [&](int cx,int cy,int r,float a){ glColor4f(0,0,0,a); glBegin(GL_TRIANGLE_FAN); glVertex2i(cx,cy); for(int i=0;i<=32;i++){ float t=(float)i/32.0f*2.0f*3.14159265f; glVertex2f(cx+cosf(t)*r, cy+sinf(t)*r);} glEnd(); };
-    drawCircle(btnPlay.cx, btnPlay.cy, btnPlay.r, 0.6f); drawCircle(btnRestart.cx, btnRestart.cy, btnRestart.r, 0.55f); drawCircle(btnNext.cx, btnNext.cy, btnNext.r, 0.55f);
-    glColor3f(1,1,1);
-    glBegin(GL_TRIANGLES); glVertex2f(btnPlay.cx-6,btnPlay.cy-8); glVertex2f(btnPlay.cx-6,btnPlay.cy+8); glVertex2f(btnPlay.cx+8,btnPlay.cy); glEnd();
-    // restart arc
-    glBegin(GL_LINE_STRIP); for (int i=30;i<=300;i+=10){ float a=i*3.14159265f/180.0f; glVertex2f(btnRestart.cx+cosf(a)*(btnRestart.r-6), btnRestart.cy+sinf(a)*(btnRestart.r-6)); } glEnd();
-    // arrow
-    { const float a_end = 300.0f*3.14159265f/180.0f; float ex=btnRestart.cx+cosf(a_end)*(btnRestart.r-6); float ey=btnRestart.cy+sinf(a_end)*(btnRestart.r-6); const float tri=4.0f; glBegin(GL_TRIANGLES); glVertex2f(ex-tri,ey-tri); glVertex2f(ex-tri,ey+tri); glVertex2f(ex+tri,ey); glEnd(); }
-    // next
-    glBegin(GL_TRIANGLES); glVertex2f(btnNext.cx-8,btnNext.cy-8); glVertex2f(btnNext.cx-8,btnNext.cy+8); glVertex2f(btnNext.cx+0,btnNext.cy); glVertex2f(btnNext.cx-0,btnNext.cy-8); glVertex2f(btnNext.cx-0,btnNext.cy+8); glVertex2f(btnNext.cx+8,btnNext.cy); glEnd();
+        glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity(); glOrtho(0, windowW, 0, windowH, -1, 1);
+        glMatrixMode(GL_MODELVIEW); glPushMatrix(); glLoadIdentity();
 
-    glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW); glPopAttrib();
+        // helper: draw filled background circle with alpha
+        auto drawBg = [&](int cx,int cy,int r,float a){ glColor4f(0.06f,0.06f,0.06f,a); glBegin(GL_TRIANGLE_FAN); glVertex2i(cx,cy); for(int i=0;i<=48;i++){ float t=(float)i/48.0f*2.0f*3.14159265f; glVertex2f(cx+cosf(t)*r, cy+sinf(t)*r);} glEnd(); };
+        // draw button backgrounds
+        drawBg(btnPlay.cx, btnPlay.cy, btnPlay.r, 0.78f);
+        drawBg(btnRestart.cx, btnRestart.cy, btnRestart.r, 0.72f);
+        drawBg(btnNext.cx, btnNext.cy, btnNext.r, 0.72f);
+
+        // draw clear white icons, larger and filled for visibility
+        glColor3f(1.0f, 1.0f, 1.0f);
+
+        // Play: single filled triangle
+        glBegin(GL_TRIANGLES);
+            glVertex2f(btnPlay.cx - 7.0f, btnPlay.cy - 9.0f);
+            glVertex2f(btnPlay.cx - 7.0f, btnPlay.cy + 9.0f);
+            glVertex2f(btnPlay.cx + 10.0f, btnPlay.cy);
+        glEnd();
+
+        // Restart: draw an outlined arc and a filled arrow tip 
+        glLineWidth(3.0f);
+        glBegin(GL_LINE_STRIP);
+            for (int i = 30; i <= 300; i += 6) {
+                float a = i * 3.14159265f / 180.0f;
+                glVertex2f(btnRestart.cx + cosf(a) * (btnRestart.r - 7), btnRestart.cy + sinf(a) * (btnRestart.r - 7));
+            }
+        glEnd();
+        glLineWidth(1.0f);
+        // restart arrow tip (filled)
+        {
+            float a_end = 300.0f * 3.14159265f / 180.0f;
+            float ex = btnRestart.cx + cosf(a_end) * (btnRestart.r - 7);
+            float ey = btnRestart.cy + sinf(a_end) * (btnRestart.r - 7);
+            float tri = 5.0f;
+            glBegin(GL_TRIANGLES);
+                glVertex2f(ex - tri, ey - tri);
+                glVertex2f(ex - tri, ey + tri);
+                glVertex2f(ex + tri, ey);
+            glEnd();
+        }
+
+        // Next: two filled triangles (double chevron)
+        glBegin(GL_TRIANGLES);
+            // left chevron
+            glVertex2f(btnNext.cx - 10.0f, btnNext.cy - 8.0f);
+            glVertex2f(btnNext.cx - 10.0f, btnNext.cy + 8.0f);
+            glVertex2f(btnNext.cx - 0.5f, btnNext.cy);
+            // right chevron
+            glVertex2f(btnNext.cx - 2.0f, btnNext.cy - 8.0f);
+            glVertex2f(btnNext.cx - 2.0f, btnNext.cy + 8.0f);
+            glVertex2f(btnNext.cx + 10.0f, btnNext.cy);
+        glEnd();
+
+        glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW);
+        glPopAttrib();
 }
 
 void onMouseClick(int button, int state, int x, int y) {
@@ -248,6 +295,21 @@ void onMouseClick(int button, int state, int x, int y) {
     auto hit = [&](const UIButton &b)->bool{ int dx = x - b.cx; int dy = wy - b.cy; return (dx*dx + dy*dy) <= (b.r*b.r); };
     if (hit(btnPlay)) { audio_playScene(1); subtitleImpl.enable(audioPlaying); }
     else if (hit(btnRestart)) { audio_restartScene(); subtitleImpl.enable(audioPlaying); }
-    else if (hit(btnNext)) { audio_playScene(2); subtitleImpl.enable(audioPlaying); }
+    else if (hit(btnNext)) {
+        // Switch to cake scene embedded in same window
+        cake_init_embedded();
+        // set GLUT callbacks to cake scene handlers
+        glutDisplayFunc(cake_display);
+        glutReshapeFunc(cake_reshape);
+        glutKeyboardFunc(cake_keyboard);
+        glutSpecialFunc(cake_special);
+        glutIdleFunc(cake_idle);
+        subtitleImpl.enable(false);
+        // Immediately set projection for current window size
+        int w = glutGet(GLUT_WINDOW_WIDTH);
+        int h = glutGet(GLUT_WINDOW_HEIGHT);
+        if (w > 0 && h > 0) cake_reshape(w, h);
+        glutPostRedisplay();
+    }
 }
 

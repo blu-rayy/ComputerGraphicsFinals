@@ -18,7 +18,7 @@
 
 /* BUILD COMMAND
 
- g++ src/main.cpp src/utils.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -lwinmm -o app.exe
+ g++ src/main.cpp src/utils.cpp src/cake.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -lwinmm -o app.exe 
 
 */
 
@@ -898,9 +898,10 @@ static void reshape(int w, int h) {
 
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    // Request a depth buffer so embedded 3D scenes (cake) render correctly
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(1280, 720);
-    glutCreateWindow("Scene 1 - Playground");
+    glutCreateWindow("Waguri's Favorite Place");
     
     glewExperimental = GL_TRUE; 
     GLenum glewErr = glewInit();

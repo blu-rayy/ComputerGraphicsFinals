@@ -1,5 +1,4 @@
 #pragma once
-// glew must be included before freeglut to expose extension entrypoints
 #include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <string>

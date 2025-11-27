@@ -5,6 +5,8 @@
 #include <cmath>
 #include <vector>
 
+#include "utils.h"
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -469,7 +471,7 @@ void drawRibbon() {
 // MAIN RENDERING
 // ============================================================================
 
-void display() {
+void cake_display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
     glLoadIdentity();
@@ -486,10 +488,15 @@ void display() {
     drawRibbon();
     drawFlowers();
     
+    // draw UI buttons overlay from utils (keep same UI across scenes)
+    int ww = glutGet(GLUT_WINDOW_WIDTH);
+    int wh = glutGet(GLUT_WINDOW_HEIGHT);
+    drawUIButtons(ww, wh);
+
     glutSwapBuffers();
 }
 
-void setupLighting() {
+void cake_setupLighting() {
     glEnable(GL_LIGHTING);
     glEnable(GL_LIGHT0);
     glEnable(GL_LIGHT1);
@@ -536,7 +543,7 @@ void setupLighting() {
     glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE);
 }
 
-void reshape(int w, int h) {
+void cake_reshape(int w, int h) {
     if (h == 0) h = 1;
     float aspect = (float)w / (float)h;
     
@@ -547,7 +554,7 @@ void reshape(int w, int h) {
     glMatrixMode(GL_MODELVIEW);
 }
 
-void keyboard(unsigned char key, int x, int y) {
+void cake_keyboard(unsigned char key, int x, int y) {
     switch(key) {
         case 'w': case 'W':
             cameraAngleX += 5.0f;
@@ -579,7 +586,7 @@ void keyboard(unsigned char key, int x, int y) {
     glutPostRedisplay();
 }
 
-void specialKeys(int key, int x, int y) {
+void cake_special(int key, int x, int y) {
     switch(key) {
         case GLUT_KEY_UP:
             cameraAngleX += 5.0f;
@@ -597,7 +604,7 @@ void specialKeys(int key, int x, int y) {
     glutPostRedisplay();
 }
 
-void idle() {
+void cake_idle() {
     // Subtle auto-rotation (only if enabled)
     if (autoRotate) {
         rotationAngle += 0.1f;
@@ -606,6 +613,20 @@ void idle() {
     }
 }
 
+// Embedded initialization helper - call once before first render when embedding
+void cake_init_embedded() {
+    // assume OpenGL context and GLEW already initialized by host
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_NORMALIZE);
+    glClearColor(0.96f, 0.94f, 0.90f, 1.0f);
+    glShadeModel(GL_SMOOTH);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    cake_setupLighting();
+}
+
+// Keep a standalone main guarded by a define so file can still build standalone if needed
+#ifdef CAKE_STANDALONE
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
@@ -619,30 +640,23 @@ int main(int argc, char** argv) {
         fprintf(stderr, "GLEW initialization failed: %s\n", glewGetErrorString(glewErr));
         return 1;
     }
-    
-    // OpenGL settings
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_NORMALIZE);
-    glClearColor(0.96f, 0.94f, 0.90f, 1.0f);  // Warm soft background
-    glShadeModel(GL_SMOOTH);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
-    setupLighting();
-    
+
+    cake_init_embedded();
+
     // Register callbacks
-    glutDisplayFunc(display);
-    glutReshapeFunc(reshape);
-    glutKeyboardFunc(keyboard);
-    glutSpecialFunc(specialKeys);
-    glutIdleFunc(idle);
-    
+    glutDisplayFunc(cake_display);
+    glutReshapeFunc(cake_reshape);
+    glutKeyboardFunc(cake_keyboard);
+    glutSpecialFunc(cake_special);
+    glutIdleFunc(cake_idle);
+
     printf("Controls:\n");
     printf("  Arrow Keys / WASD - Rotate camera\n");
     printf("  +/- - Zoom in/out\n");
     printf("  R - Toggle auto-rotation (currently OFF)\n");
     printf("  ESC - Exit\n\n");
-    
+
     glutMainLoop();
     return 0;
 }
+#endif
