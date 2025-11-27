@@ -492,6 +492,8 @@ void cake_display() {
     int ww = glutGet(GLUT_WINDOW_WIDTH);
     int wh = glutGet(GLUT_WINDOW_HEIGHT);
     drawUIButtons(ww, wh);
+    // draw subtitles (use utils' subtitle system; only visible when enabled by playback)
+    subtitle_draw(ww, wh);
 
     glutSwapBuffers();
 }
@@ -609,6 +611,9 @@ void cake_idle() {
     if (autoRotate) {
         rotationAngle += 0.1f;
         if (rotationAngle > 360.0f) rotationAngle -= 360.0f;
+    }
+
+    if (autoRotate || audio_isPlaying()) {
         glutPostRedisplay();
     }
 }

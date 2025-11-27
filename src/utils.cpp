@@ -91,9 +91,13 @@ public:
             auto now = clock::now();
             double elapsed = std::chrono::duration<double>(now - playbackStartTime).count();
             bool found = false;
-            for (const auto &en : entries) {
-                if (elapsed >= en.start && elapsed <= en.end) { drawText = en.text; found = true; break; }
+            const char *selectedText = nullptr;
+            int selIndex = -1;
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const auto &en = entries[i];
+                if (elapsed >= en.start && elapsed <= en.end) { drawText = en.text; selectedText = en.text.c_str(); found = true; selIndex = (int)i; break; }
             }
+            // Debug: log subtitle selection to console (throttled by only printing when a selection occurs)
             if (!found) return;
         } else {
             if (text.empty()) return;
@@ -109,6 +113,8 @@ public:
 
         glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_TRANSFORM_BIT);
         glDisable(GL_LIGHTING);
+        // Ensure subtitle overlay is not occluded by 3D scene depth
+        glDisable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -119,8 +125,12 @@ public:
         glBegin(GL_QUADS); glVertex2i(left,bottom); glVertex2i(right,bottom); glVertex2i(right,top); glVertex2i(left,top); glEnd();
 
         glColor3f(1.0f,1.0f,1.0f);
-        glRasterPos2i(left + paddingX, bottom + paddingY);
+        // Use glWindowPos2i to set the bitmap raster position in window coordinates
+        // This avoids issues where glRasterPos can be clipped by the current matrices.
+        glWindowPos2i(left + paddingX, bottom + paddingY);
         for (char c : drawText) glutBitmapCharacter(font, c);
+
+        // (debug overlay removed)
 
         glPopMatrix(); glMatrixMode(GL_PROJECTION); glPopMatrix(); glMatrixMode(GL_MODELVIEW);
         glPopAttrib();
@@ -140,6 +150,8 @@ static bool audioPlaying = false;
 static double audioDurationSeconds = 0.0;
 static bool autoSunEnabled = true;
 static int lastSceneIndex = 0;
+// current active scene (1 = playground, 2 = cake)
+static int currentSceneIndex = 1;
 
 // forward UI buttons
 struct UIButton { int cx, cy, r; };
@@ -191,6 +203,19 @@ void audio_restartScene() {
 
 void audio_playScene(int sceneIndex) {
     lastSceneIndex = sceneIndex;
+    // If we know subtitle timings for this scene, register them before playback.
+    if (sceneIndex == 2) {
+        std::vector<SubtitleEntry> entries;
+        entries.push_back({"\"Whoa! Haha!\"", 0.0f, 4.0f});
+        entries.push_back({"\"It looks delicious! And it's so adorable too!\"", 5.0f, 7.0f});
+        entries.push_back({"\"Is this a new one by any chance?\"", 8.0f, 11.0f});
+        entries.push_back({"\"Actually... I made it.\"", 12.0f, 15.0f});
+        entries.push_back({"\"...Eh?\"", 16.0f, 17.0f});
+        entries.push_back({"\"I mean, you always buy cakes at our place...\"", 18.0f, 22.0f});
+        entries.push_back({"\"I'd feel bad to give you something you've already had on your birthday...\"", 23.0f, 26.0f});
+        entries.push_back({"\"Then... I'll make sure to enjoy the cake.\"", 27.0f, 33.0f});
+        subtitle_setEntries(entries);
+    }
     // stop any playback
     PlaySound(NULL, NULL, 0);
     mciSendStringA("close sceneaudio", NULL, 0, NULL);
@@ -293,11 +318,35 @@ void onMouseClick(int button, int state, int x, int y) {
     if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN) return;
     int wy = glutGet(GLUT_WINDOW_HEIGHT) - y; // window height might be queried here
     auto hit = [&](const UIButton &b)->bool{ int dx = x - b.cx; int dy = wy - b.cy; return (dx*dx + dy*dy) <= (b.r*b.r); };
-    if (hit(btnPlay)) { audio_playScene(1); subtitleImpl.enable(audioPlaying); }
+    if (hit(btnPlay)) { 
+        audio_playScene(currentSceneIndex); 
+        // start subtitle timer immediately so text appears when Play is clicked
+        playbackStartTime = std::chrono::steady_clock::now();
+        subtitleImpl.enable(true);
+    }
     else if (hit(btnRestart)) { audio_restartScene(); subtitleImpl.enable(audioPlaying); }
     else if (hit(btnNext)) {
+        // Ensure any playback is stopped when switching scenes
+        PlaySound(NULL, NULL, 0);
+        mciSendStringA("close sceneaudio", NULL, 0, NULL);
+        audioPlaying = false; audioDurationSeconds = 0.0;
+
         // Switch to cake scene embedded in same window
         cake_init_embedded();
+        currentSceneIndex = 2;
+        // preload scene2 subtitle timings so Play will show them immediately
+        {
+            std::vector<SubtitleEntry> entries;
+            entries.push_back({"\"Whoa! Haha!\"", 0.0f, 4.0f});
+            entries.push_back({"\"It looks delicious! And it's so adorable too!\"", 5.0f, 7.0f});
+            entries.push_back({"\"Is this a new one by any chance?\"", 8.0f, 11.0f});
+            entries.push_back({"\"Actually... I made it.\"", 12.0f, 15.0f});
+            entries.push_back({"\"...Eh?\"", 16.0f, 17.0f});
+            entries.push_back({"\"I mean, you always buy cakes at our place...\"", 18.0f, 22.0f});
+            entries.push_back({"\"I'd feel bad to give you something you've already had on your birthday...\"", 23.0f, 26.0f});
+            entries.push_back({"\"Then... I'll make sure to enjoy the cake.\"", 27.0f, 33.0f});
+            subtitle_setEntries(entries);
+        }
         // set GLUT callbacks to cake scene handlers
         glutDisplayFunc(cake_display);
         glutReshapeFunc(cake_reshape);
