@@ -16,6 +16,7 @@
         "-lfreeglut",
         "-lopengl32",
         "-lglu32",
+        "-lwinmm",
         "-o", "app.exe"
       ],
       "group": { "kind": "build", "isDefault": true }

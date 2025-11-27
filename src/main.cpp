@@ -8,6 +8,7 @@
 
 #include "utils.h"
 #include <string>
+#include <mmsystem.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -15,7 +16,7 @@
 
 /* BUILD COMMAND
 
- g++ src/main.cpp src/utils.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -o app.exe
+ g++ src/main.cpp src/utils.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -lwinmm -o app.exe
 
 */
 
@@ -155,6 +156,169 @@ private:
 };
 
 static Subtitle subtitle;
+static bool subtitleEnabled = false; // subtitle off by default
+static bool audioPlaying = false;
+static int currentScene = 1;
+
+// Play audio file for a scene (expects files named scene1.wav, scene2.wav...)
+static void playScene(int sceneIndex) {
+    // stop any current playback (PlaySound and MCI)
+    PlaySound(NULL, NULL, 0);
+    mciSendStringA("close sceneaudio", NULL, 0, NULL);
+
+    char path[512];
+    FILE *f = NULL;
+
+    // Prefer WAV files first (audio\sceneN.wav then sceneN.wav)
+    snprintf(path, sizeof(path), "audio\\scene%d.wav", sceneIndex);
+    f = fopen(path, "rb");
+    if (!f) {
+        snprintf(path, sizeof(path), "scene%d.wav", sceneIndex);
+        f = fopen(path, "rb");
+    }
+    if (f) {
+        fclose(f);
+        if (PlaySoundA(path, NULL, SND_FILENAME | SND_ASYNC)) {
+            audioPlaying = true;
+            std::printf("Playing %s (WAV via PlaySound)\n", path);
+            return;
+        } else {
+            std::fprintf(stderr, "Failed to play WAV: %s\n", path);
+            audioPlaying = false;
+        }
+    }
+
+    // Fallback: try MP3 via MCI (audio\sceneN.mp3)
+    snprintf(path, sizeof(path), "audio\\scene%d.mp3", sceneIndex);
+    f = fopen(path, "rb");
+    if (f) {
+        fclose(f);
+        char cmd[1024];
+        snprintf(cmd, sizeof(cmd), "open \"%s\" type mpegvideo alias sceneaudio", path);
+        if (mciSendStringA(cmd, NULL, 0, NULL) == 0) {
+            mciSendStringA("play sceneaudio", NULL, 0, NULL);
+            audioPlaying = true;
+            std::printf("Playing %s (MP3 via MCI)\n", path);
+            return;
+        } else {
+            std::fprintf(stderr, "Failed to open MP3 via MCI: %s\n", path);
+            audioPlaying = false;
+        }
+    }
+
+    std::fprintf(stderr, "No audio found for scene %d (looked for audio\\scene%d.wav, scene%d.wav, and audio\\scene%d.mp3)\n", sceneIndex, sceneIndex, sceneIndex, sceneIndex);
+    audioPlaying = false;
+}
+
+static void restartScene() {
+    playScene(currentScene);
+}
+
+// UI buttons (bottom-right)
+struct UIButton { int cx, cy, r; };
+static UIButton btnPlay, btnRestart, btnNext;
+
+static void drawUIButtons(int windowW, int windowH) {
+    int margin = 16;
+    int spacing = 12;
+    int radius = 20;
+    int x = windowW - margin - radius;
+    int y = margin + radius;
+
+    btnNext = { x, y, radius };
+    btnRestart = { x - (radius*2 + spacing), y, radius };
+    btnPlay = { x - (radius*4 + spacing*2), y, radius };
+
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix(); glLoadIdentity(); glOrtho(0, windowW, 0, windowH, -1, 1);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix(); glLoadIdentity();
+
+    auto drawCircle = [&](int cx, int cy, int r, float a){
+        glColor4f(0.0f, 0.0f, 0.0f, a);
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex2i(cx, cy);
+        for (int i=0;i<=32;i++){
+            float t = (float)i/32.0f * 2.0f * 3.14159265f;
+            glVertex2f(cx + cosf(t)*r, cy + sinf(t)*r);
+        }
+        glEnd();
+    };
+
+    drawCircle(btnPlay.cx, btnPlay.cy, btnPlay.r, 0.6f);
+    drawCircle(btnRestart.cx, btnRestart.cy, btnRestart.r, 0.55f);
+    drawCircle(btnNext.cx, btnNext.cy, btnNext.r, 0.55f);
+
+    glColor3f(1.0f,1.0f,1.0f);
+    // play triangle
+    glBegin(GL_TRIANGLES);
+        glVertex2f(btnPlay.cx - 6, btnPlay.cy - 8);
+        glVertex2f(btnPlay.cx - 6, btnPlay.cy + 8);
+        glVertex2f(btnPlay.cx + 8, btnPlay.cy);
+    glEnd();
+
+    // restart arc
+    glBegin(GL_LINE_STRIP);
+    for (int i=30;i<=300;i+=10) {
+        float a = i * 3.14159265f / 180.0f;
+        glVertex2f(btnRestart.cx + cosf(a) * (btnRestart.r - 6), btnRestart.cy + sinf(a) * (btnRestart.r - 6));
+    }
+    glEnd();
+    // draw restart arrow aligned to arc end
+    {
+        const float a_end = 300.0f * 3.14159265f / 180.0f;
+        float ex = btnRestart.cx + cosf(a_end) * (btnRestart.r - 6);
+        float ey = btnRestart.cy + sinf(a_end) * (btnRestart.r - 6);
+        const float tri = 4.0f;
+        glBegin(GL_TRIANGLES);
+            glVertex2f(ex - tri, ey - tri);
+            glVertex2f(ex - tri, ey + tri);
+            glVertex2f(ex + tri, ey);
+        glEnd();
+    }
+
+    // next double triangles
+    glBegin(GL_TRIANGLES);
+        glVertex2f(btnNext.cx - 8, btnNext.cy - 8);
+        glVertex2f(btnNext.cx - 8, btnNext.cy + 8);
+        glVertex2f(btnNext.cx + 0, btnNext.cy);
+        glVertex2f(btnNext.cx - 0, btnNext.cy - 8);
+        glVertex2f(btnNext.cx - 0, btnNext.cy + 8);
+        glVertex2f(btnNext.cx + 8, btnNext.cy);
+    glEnd();
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopAttrib();
+}
+
+static void onMouseClick(int button, int state, int x, int y) {
+    if (button != GLUT_LEFT_BUTTON || state != GLUT_DOWN) return;
+    int wy = winH - y;
+    auto hit = [&](const UIButton &b)->bool{
+        int dx = x - b.cx; int dy = wy - b.cy; return (dx*dx + dy*dy) <= (b.r*b.r);
+    };
+    if (hit(btnPlay)) {
+        currentScene = 1;
+        playScene(currentScene);
+        // only enable subtitle if playback actually started
+        subtitleEnabled = audioPlaying;
+    } else if (hit(btnRestart)) {
+        restartScene();
+        subtitleEnabled = audioPlaying;
+    } else if (hit(btnNext)) {
+        currentScene += 1;
+        playScene(currentScene);
+        subtitleEnabled = audioPlaying;
+    }
+}
 
 // Bloom/post-process parameters (tweakable at runtime)
 // (Post-process/bloom removed)
@@ -907,8 +1071,10 @@ static void keyboard(unsigned char /*key*/, int /*x*/, int /*y*/) {
 static void display() {
     // Render scene directly to default framebuffer
     renderSceneContents();
-    // draw subtitle overlay
-    subtitle.draw(winW, winH);
+    // draw subtitle overlay (only when enabled)
+    if (subtitleEnabled) subtitle.draw(winW, winH);
+    // draw UI buttons (bottom-right)
+    drawUIButtons(winW, winH);
     glutSwapBuffers();
 }
 
@@ -929,7 +1095,7 @@ int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
     glutInitWindowSize(1280, 720);
-    glutCreateWindow("Scene - Bloom Demo");
+    glutCreateWindow("Scene 1 - Playground");
     
     glewExperimental = GL_TRUE; 
     GLenum glewErr = glewInit();
@@ -944,11 +1110,10 @@ int main(int argc, char** argv) {
     // initialize subtitle text
     subtitle.setText("Subaru and I would often come here to play");
 
-    // (Post-process/bloom removed)
-
     glutDisplayFunc(display);
     glutSpecialFunc(specialKeys);
     glutKeyboardFunc(keyboard);
+    glutMouseFunc(onMouseClick);
     glutIdleFunc(updateCloudsIdle);
     glutReshapeFunc(reshape);
 
