@@ -518,25 +518,59 @@ static void drawSeesaw(float x, float y, float angle, float scale, float tGround
 
 // compute sky colors based on sunElevation
 static void computeSkyColors(float e, float top[3], float bottom[3]) {
-    const float nightTop[3]   = {0.02f, 0.04f, 0.20f};
-    const float nightBottom[3]= {0.01f, 0.01f, 0.05f};
+    const float nightTop[3]     = {0.02f, 0.06f, 0.25f};  // dark blue
+    const float nightBottom[3]  = {0.005f, 0.02f, 0.10f}; // darker blue
 
-    const float sunsetTop[3]  = {0.90f, 0.45f, 0.20f};
-    const float sunsetBottom[3]={0.95f, 0.60f, 0.30f};
+    const float dayTop[3]       = {0.00f, 0.749f, 1.00f};   // #00BFFF
+    const float dayBottom[3]    = {0.55f, 0.85f, 1.00f};    // light sky
 
-    const float dayTop[3]     = {0.18f, 0.68f, 0.98f}; 
-    const float dayBottom[3]  = {0.55f, 0.85f, 1.00f}; 
+    const float cSoftViolet[3]  = {0.749f, 0.439f, 1.000f}; // #BF70FF
+    const float cPeachCoral[3]  = {1.000f, 0.541f, 0.439f}; // #FF8A70
+    const float cSunsetRed[3]   = {1.000f, 0.231f, 0.188f}; // #FF3B30
 
-    // 'e' is provided by caller (-1 .. +1).  If e>=0: sunset->day, else night->sunset
+    // Map elevation to a sunset progress that accelerates near the horizon
+    float e_norm = (e + 1.0f) * 0.5f;                 // 0..1 (1=top)
+    // Start transition near 3/4 window height, complete as it nears horizon
+    float sSunset = 1.0f - smoothstepf(0.35f, 0.75f, e_norm); // later start keeps day blue longer
+    sSunset = smoothstepf(0.0f, 1.0f, sSunset);       // extra ease
+
+    // HSV mixing to avoid muddy blends
+    auto sampleTop = [&](float t, float out[3]){
+        const float stops[] = {0.0f, 0.55f, 1.0f};
+        const float* cols[] = { dayTop, cSoftViolet, cPeachCoral };
+        int n = 3;
+        if (t <= stops[0]) { mixColorHSV(cols[0], cols[0], 0.0f, out); return; }
+        if (t >= stops[n-1]) { mixColorHSV(cols[n-2], cols[n-1], 1.0f, out); return; }
+        int i = 0; for (; i < n-1; ++i) if (t >= stops[i] && t <= stops[i+1]) break;
+        float lt = (t - stops[i]) / (stops[i+1] - stops[i]);
+        mixColorHSV(cols[i], cols[i+1], lt, out);
+    };
+    auto sampleBottom = [&](float t, float out[3]){
+        const float stops[] = {0.0f, 0.65f, 1.0f};
+        const float* cols[] = { dayBottom, cPeachCoral, cSunsetRed };
+        int n = 3;
+        if (t <= stops[0]) { mixColorHSV(cols[0], cols[0], 0.0f, out); return; }
+        if (t >= stops[n-1]) { mixColorHSV(cols[n-2], cols[n-1], 1.0f, out); return; }
+        int i = 0; for (; i < n-1; ++i) if (t >= stops[i] && t <= stops[i+1]) break;
+        float lt = (t - stops[i]) / (stops[i+1] - stops[i]);
+        mixColorHSV(cols[i], cols[i+1], lt, out);
+    };
+
+    float topTarget[3], bottomTarget[3];
+    sampleTop(sSunset, topTarget);
+    sampleBottom(sSunset, bottomTarget);
+
     if (e >= 0.0f) {
-        const float centerBias = 0.40f;
-        float t = centerBias + (1.0f - centerBias) * mixf(0.0f, 1.0f, e);
-        mixColor(sunsetTop, dayTop, t, top);
-        mixColor(sunsetBottom, dayBottom, t, bottom);
+        float tEase = smoothstepf(0.0f, 1.0f, sSunset);
+        mixColorHSV(dayTop, topTarget, tEase, top);
+        mixColorHSV(dayBottom, bottomTarget, tEase, bottom);
     } else {
-        float t = mixf(0.0f, 1.0f, e + 1.0f);
-        mixColor(nightTop, sunsetTop, t, top);
-        mixColor(nightBottom, sunsetBottom, t, bottom);
+        float tNight = smoothstepf(0.0f, 1.0f, e + 1.0f);
+        float fullTop[3], fullBottom[3];
+        sampleTop(1.0f, fullTop);
+        sampleBottom(1.0f, fullBottom);
+        mixColorHSV(nightTop, fullTop, tNight, top);
+        mixColorHSV(nightBottom, fullBottom, tNight, bottom);
     }
 }
 
@@ -553,6 +587,53 @@ static void drawSkyGradient() {
     glEnd();
 }
 
+// Additive radial glow for simple bloom around bright sources (e.g., sun)
+static void drawRadialGlow(float cx, float cy, float baseRadius, const float color[3], float strength) {
+    if (strength <= 0.001f) return;
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE);
+
+    glPushMatrix();
+    glTranslatef(cx, cy, 0.0f);
+    float sx = 1.0f, sy = 1.0f;
+    if (winAspect >= 1.0f) sx = 1.0f / winAspect; else sy = winAspect;
+    glScalef(sx, sy, 1.0f);
+
+    const int layers = 6;
+    for (int i = 0; i < layers; ++i) {
+        float t = (float)i / (float)(layers - 1);
+        float r = baseRadius * mixf(1.4f, 4.5f, t);
+        float a = strength * mixf(0.35f, 0.02f, t);
+        float col[3] = { color[0] * a, color[1] * a, color[2] * a };
+        drawCircle(0.0f, 0.0f, r, col);
+    }
+
+    glPopMatrix();
+    glPopAttrib();
+}
+
+// Subtle horizon haze to warm the lower sky during sunset
+static void drawHorizonHaze(float sunsetFactor) {
+    if (sunsetFactor <= 0.0f) return;
+    float alpha = mixf(0.0f, 0.25f, sunsetFactor);
+    float col[4] = {1.0f, 0.55f, 0.18f, alpha};
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBegin(GL_QUADS);
+        glColor4f(col[0], col[1], col[2], col[3]); glVertex2f(-1.0f, -0.2f);
+        glColor4f(col[0], col[1], col[2], col[3]); glVertex2f( 1.0f, -0.2f);
+        glColor4f(col[0], col[1], col[2], 0.0f);  glVertex2f( 1.0f,  0.5f);
+        glColor4f(col[0], col[1], col[2], 0.0f);  glVertex2f(-1.0f,  0.5f);
+    glEnd();
+    glPopAttrib();
+}
+
 // Simple cloud drawing: overlapping circles. Clouds are animated horizontally.
 struct Cloud { float bx, by, scale, speed; };
 static Cloud clouds[] = {
@@ -563,6 +644,56 @@ static Cloud clouds[] = {
 
 // animation timer for clouds (seconds)
 static float lastCloudTime = 0.0f;
+
+// === Star field ===
+struct Star { float x, y, size, intensity, speed, phase; };
+static std::vector<Star> gStars;
+static bool gStarsInit = false;
+static void initStars(int count = 160) {
+    if (gStarsInit) return;
+    gStars.clear(); gStars.reserve(count);
+    auto frand = [](float seed){ float s = sinf(seed) * 43758.5453f; return s - floorf(s); };
+    for (int i = 0; i < count; ++i) {
+        float u = frand(12.9898f * (i + 1));
+        float v = frand(78.233f  * (i + 11));
+        float w = frand(45.164f  * (i + 37));
+        float q = frand(9.751f   * (i + 97));
+        // Spread across the sky, keep a few near horizon too but avoid ground band too much
+        float x = -1.0f + 2.0f * u;
+        float y = -0.05f + 1.05f * v; // mostly above ground
+        float size = 0.0032f + 0.0045f * w; // ~1.5-3 px depending on res
+        float intensity = 0.55f + 0.45f * (1.0f - w*w); // bias towards brighter
+        float speed = 0.6f + 1.6f * q; // twinkle speed
+        float phase = q * 6.2831853f;
+        gStars.push_back({x,y,size,intensity,speed,phase});
+    }
+    gStarsInit = true;
+}
+
+static void drawStars(float nightFactor) {
+    if (nightFactor <= 0.001f || gStars.empty()) return;
+    float t = glutGet(GLUT_ELAPSED_TIME) * 0.001f;
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    for (const auto &s : gStars) {
+        // gentle twinkle
+        float tw = 0.8f + 0.2f * sinf(s.phase + s.speed * t);
+        float alpha = nightFactor * s.intensity * tw;
+        float col[3] = { alpha, alpha, alpha };
+
+        glPushMatrix();
+        glTranslatef(s.x, s.y, 0.0f);
+        float sx = 1.0f, sy = 1.0f;
+        if (winAspect >= 1.0f) sx = 1.0f / winAspect; else sy = winAspect;
+        glScalef(sx, sy, 1.0f);
+        drawCircle(0.0f, 0.0f, s.size, col);
+        glPopMatrix();
+    }
+    glPopAttrib();
+}
 
 // === Cloud system ===
 static void drawCloud(float cx, float cy, float s, float tGround) {
@@ -650,12 +781,23 @@ static void renderSceneContents() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     drawSkyGradient();
 
+    // Stars appear from sunset to night, vanish towards day; draw behind clouds
+    if (!gStarsInit) initStars();
+    {
+        float e_for_sky = sunVisible ? sunElevation : 1.0f;
+        float e_norm = (e_for_sky + 1.0f) * 0.5f; // 0..1
+        // Fully off by late sunset (~0.55), fully on by night (~0.30)
+        float starFactor = 1.0f - smoothstepf(0.30f, 0.55f, e_norm);
+        drawStars(starFactor);
+    }
+
     // draw clouds in the sky (compute a small day/night factor)
     float cloudShade;
     if (!sunVisible) cloudShade = 1.0f;
     else if (sunElevation >= 0.0f) {
+        float t = smoothstepf(0.0f, 1.0f, sunElevation);
         const float centerBias = 0.40f;
-        cloudShade = centerBias + (1.0f - centerBias) * mixf(0.0f, 1.0f, sunElevation);
+        cloudShade = centerBias + (1.0f - centerBias) * t;
     } else cloudShade = (sunElevation + 1.0f) / 2.0f;
     drawClouds(cloudShade);
 
@@ -671,7 +813,8 @@ static void renderSceneContents() {
 
     float sunX = 0.0f;
     float sunY = sunElevation;
-    float radius = mixf(0.04f, 0.14f, (sunElevation + 1.0f) / 2.0f);
+    float e_norm_for_size = (sunElevation + 1.0f) * 0.5f;
+    float radius = mixf(0.04f, 0.14f, smoothstepf(0.0f, 1.0f, e_norm_for_size));
 
     if (sunVisible) {
         glPushMatrix();
@@ -682,6 +825,18 @@ static void renderSceneContents() {
         drawCircle(0.0f, 0.0f, radius, sunColor);
         glPopMatrix();
     }
+    if (sunVisible) {
+        float e_norm = (sunElevation + 1.0f) * 0.5f;
+        float sunsetFactor = 1.0f - smoothstepf(0.2f, 1.0f, e_norm);
+        float bloomStrength = mixf(0.05f, 0.32f, sunsetFactor);
+        drawRadialGlow(sunX, sunY, radius, sunColor, bloomStrength);
+    }
+
+    {
+        float e_norm = (sunElevation + 1.0f) * 0.5f;
+        float sunsetFactor = 1.0f - smoothstepf(0.25f, 0.95f, e_norm);
+        drawHorizonHaze(sunsetFactor);
+    }
 
     float groundTopTint[3];
     float gt_day[3] = {0.8f, 0.8f, 0.8f};
@@ -691,7 +846,8 @@ static void renderSceneContents() {
     if (!sunVisible) tGround = 1.0f;
     else if (sunElevation >= 0.0f) {
         const float centerBias = 0.40f;
-        tGround = centerBias + (1.0f - centerBias) * mixf(0.0f, 1.0f, sunElevation);
+        float t = smoothstepf(0.0f, 1.0f, sunElevation);
+        tGround = centerBias + (1.0f - centerBias) * t;
     } else tGround = (sunElevation + 1.0f) / 2.0f;
     mixColor(gt_night, gt_day, tGround, groundTopTint);
 
@@ -702,23 +858,23 @@ static void renderSceneContents() {
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
         float e_norm = (sunElevation + 1.0f) * 0.5f;
-        float e_smooth = powf(e_norm, 0.6f);
-        float intensity = mixf(0.15f, 2.5f, e_smooth);
+        float e_smooth = smoothstepf(0.0f, 1.0f, e_norm);
+        float intensity = mixf(0.18f, 1.85f, e_smooth);
         float warmColor[3] = {1.0f, 0.55f, 0.18f};
         float finalColor[3];
-        float warmFactor = mixf(0.15f, 0.85f, e_smooth);
+        float warmFactor = mixf(0.35f, 0.85f, 1.0f - e_smooth);
         mixColor(sunColor, warmColor, warmFactor, finalColor);
 
         float lightDiffuse[4]  = { finalColor[0] * intensity, finalColor[1] * intensity, finalColor[2] * intensity, 1.0f };
         float lightAmbient[4]  = { finalColor[0] * (0.06f + 0.32f * e_smooth), finalColor[1] * (0.06f + 0.32f * e_smooth), finalColor[2] * (0.06f + 0.32f * e_smooth), 1.0f };
-        float specMul = mixf(0.3f, 0.8f, e_smooth);
+        float specMul = mixf(0.25f, 0.75f, e_smooth);
         float lightSpecular[4] = { specMul, specMul, specMul, 1.0f };
         glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
         glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
         glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
 
-        float linearAtt  = mixf(0.9f, 0.08f, e_smooth);
-        float quadAtt    = mixf(0.9f, 0.02f, e_smooth);
+        float linearAtt  = mixf(0.9f, 0.12f, e_smooth);
+        float quadAtt    = mixf(0.9f, 0.03f, e_smooth);
         glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
         glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, linearAtt);
         glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, quadAtt);
