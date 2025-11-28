@@ -5,10 +5,10 @@
       "label": "build",
       "type": "shell",
       "command": "g++",
-        "args": [
-        "src/main.cpp",
-        "src/utils.cpp",
-        "src/cake.cpp",
+          "args": [
+          "src/main.cpp",
+          "src/utils.cpp",
+          "src/cake.cpp",
   "-Ilibs/include",
   "-Ilibs/freeglut/include",
         "-Llibs/freeglut/lib/x64",
