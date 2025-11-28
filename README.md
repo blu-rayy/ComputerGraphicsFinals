@@ -1,12 +1,10 @@
-# ComputerGraphicsFinals - CS0045 
+# Computer Graphics & Visual Computing Finals - CS0045 
 - Dr. Hazel San Patilano
 
 **Names:**
-Kristian David R. Bautista - 202311645
-Angel A. Letada - 2023
-Marianne Angelika B. Santos
-
-
+- Kristian David R. Bautista - 202311645
+- Angel A. Letada - 202311538
+- Marianne Angelika B. Santos - 202311273
 
 ## Overview
 This project is a OpenGL/FreeGLUT demo based on the anime "A Fragrant Flower Blooms With Dignity". The 11th episode was the main inspiration of the scenes, where Waguri, the female lead, invited Rintaro, the male lead to her favorite place, the park (Hiroo North Park).
@@ -17,7 +15,7 @@ This also includes a simple subtitle and audio system and a on-screen UI for cal
 - Visual Studio Code (Blue) — open the workspace folder and use the integrated terminal (PowerShell) for build and run steps.
 - A MinGW/MSYS `g++` toolchain on Windows that matches the architecture of the provided libraries (x64 by default).
 
-## Steps.
+## Steps
 
 1. Open the integrated terminal in the IDE
 2. Run the build command below:
