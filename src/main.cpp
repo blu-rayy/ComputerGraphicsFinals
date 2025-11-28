@@ -646,6 +646,56 @@ static Cloud clouds[] = {
 // animation timer for clouds (seconds)
 static float lastCloudTime = 0.0f;
 
+// === Star field ===
+struct Star { float x, y, size, intensity, speed, phase; };
+static std::vector<Star> gStars;
+static bool gStarsInit = false;
+static void initStars(int count = 160) {
+    if (gStarsInit) return;
+    gStars.clear(); gStars.reserve(count);
+    auto frand = [](float seed){ float s = sinf(seed) * 43758.5453f; return s - floorf(s); };
+    for (int i = 0; i < count; ++i) {
+        float u = frand(12.9898f * (i + 1));
+        float v = frand(78.233f  * (i + 11));
+        float w = frand(45.164f  * (i + 37));
+        float q = frand(9.751f   * (i + 97));
+        // Spread across the sky, keep a few near horizon too but avoid ground band too much
+        float x = -1.0f + 2.0f * u;
+        float y = -0.05f + 1.05f * v; // mostly above ground
+        float size = 0.0032f + 0.0045f * w; // ~1.5-3 px depending on res
+        float intensity = 0.55f + 0.45f * (1.0f - w*w); // bias towards brighter
+        float speed = 0.6f + 1.6f * q; // twinkle speed
+        float phase = q * 6.2831853f;
+        gStars.push_back({x,y,size,intensity,speed,phase});
+    }
+    gStarsInit = true;
+}
+
+static void drawStars(float nightFactor) {
+    if (nightFactor <= 0.001f || gStars.empty()) return;
+    float t = glutGet(GLUT_ELAPSED_TIME) * 0.001f;
+    glPushAttrib(GL_ENABLE_BIT | GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    for (const auto &s : gStars) {
+        // gentle twinkle
+        float tw = 0.8f + 0.2f * sinf(s.phase + s.speed * t);
+        float alpha = nightFactor * s.intensity * tw;
+        float col[3] = { alpha, alpha, alpha };
+
+        glPushMatrix();
+        glTranslatef(s.x, s.y, 0.0f);
+        float sx = 1.0f, sy = 1.0f;
+        if (winAspect >= 1.0f) sx = 1.0f / winAspect; else sy = winAspect;
+        glScalef(sx, sy, 1.0f);
+        drawCircle(0.0f, 0.0f, s.size, col);
+        glPopMatrix();
+    }
+    glPopAttrib();
+}
+
 // === Cloud system ===
 static void drawCloud(float cx, float cy, float s, float tGround) {
     // clouds are white but dim at night slightly
@@ -731,6 +781,16 @@ void drawSlide(float pgShade) {
 static void renderSceneContents() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     drawSkyGradient();
+
+    // Stars appear from sunset to night, vanish towards day; draw behind clouds
+    if (!gStarsInit) initStars();
+    {
+        float e_for_sky = sunVisible ? sunElevation : 1.0f;
+        float e_norm = (e_for_sky + 1.0f) * 0.5f; // 0..1
+        // Fully off by late sunset (~0.55), fully on by night (~0.30)
+        float starFactor = 1.0f - smoothstepf(0.30f, 0.55f, e_norm);
+        drawStars(starFactor);
+    }
 
     // draw clouds in the sky (compute a small day/night factor)
     float cloudShade;
