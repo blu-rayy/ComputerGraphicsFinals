@@ -18,8 +18,7 @@
 
 /* BUILD COMMAND
 
- g++ src/main.cpp src/utils.cpp src/cake.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -lwinmm -o app.exe 
-
+g++ -DEMBEDDED_MODE src/main.cpp src/utils.cpp src/cake_scene2.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -lwinmm -o app.exe
 */
 
 // Sun elevation in normalized device coords Y (-1 bottom .. +1 top)
@@ -923,6 +922,7 @@ int main(int argc, char** argv) {
         e.text = "I have made a lot of memories here..."; e.start = 9.5f; e.end = 11.5f; entries.push_back(e);
         e.text = "So I was hoping I could add another one today."; e.start = 12.0f; e.end = 15.0f; entries.push_back(e);
         subtitle_setEntries(entries);
+        subtitle_enable(true);
     }
 
     glutDisplayFunc(display);
