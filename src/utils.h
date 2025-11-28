@@ -11,6 +11,14 @@ struct Mesh { GLuint vbo; GLuint vao; GLsizei count; GLenum mode; };
 // clamp-mix for floats
 float mixf(float a, float b, float t);
 
+// Hermite smoothstep for floats: 0 at edge0, 1 at edge1
+float smoothstepf(float edge0, float edge1, float x);
+
+// Color utilities (HSV blending to avoid muddy transitions)
+void rgb_to_hsv(const float rgb[3], float hsv[3]);
+void hsv_to_rgb(const float hsv[3], float rgb[3]);
+void mixColorHSV(const float a[3], const float b[3], float t, float out[3]);
+
 // mix two RGB colors
 void mixColor(const float a[3], const float b[3], float t, float out[3]);
 

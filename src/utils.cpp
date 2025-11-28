@@ -22,6 +22,88 @@ float mixf(float a, float b, float t) {
     return a + (b - a) * t;
 }
 
+float smoothstepf(float edge0, float edge1, float x) {
+    if (edge0 == edge1) return (x >= edge1) ? 1.0f : 0.0f;
+    float t = (x - edge0) / (edge1 - edge0);
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+// --- HSV helpers ---
+void rgb_to_hsv(const float rgb[3], float hsv[3]) {
+    float r = rgb[0], g = rgb[1], b = rgb[2];
+    float maxc = (r > g ? (r > b ? r : b) : (g > b ? g : b));
+    float minc = (r < g ? (r < b ? r : b) : (g < b ? g : b));
+    float v = maxc;
+    float d = maxc - minc;
+    float s = (maxc <= 0.0f) ? 0.0f : (d / maxc);
+    float h = 0.0f;
+    if (d > 0.0f) {
+        if (maxc == r) h = (g - b) / d + (g < b ? 6.0f : 0.0f);
+        else if (maxc == g) h = (b - r) / d + 2.0f;
+        else h = (r - g) / d + 4.0f;
+        h /= 6.0f; // [0,1)
+    }
+    hsv[0] = h; hsv[1] = s; hsv[2] = v;
+}
+
+void hsv_to_rgb(const float hsv[3], float rgb[3]) {
+    float h = hsv[0], s = hsv[1], v = hsv[2];
+    if (s <= 0.0f) { rgb[0] = v; rgb[1] = v; rgb[2] = v; return; }
+    h = (h - floorf(h)) * 6.0f; // [0,6)
+    int i = (int)floorf(h);
+    float f = h - i;
+    float p = v * (1.0f - s);
+    float q = v * (1.0f - s * f);
+    float t = v * (1.0f - s * (1.0f - f));
+    switch (i % 6) {
+        case 0: rgb[0]=v; rgb[1]=t; rgb[2]=p; break;
+        case 1: rgb[0]=q; rgb[1]=v; rgb[2]=p; break;
+        case 2: rgb[0]=p; rgb[1]=v; rgb[2]=t; break;
+        case 3: rgb[0]=p; rgb[1]=q; rgb[2]=v; break;
+        case 4: rgb[0]=t; rgb[1]=p; rgb[2]=v; break;
+        case 5: rgb[0]=v; rgb[1]=p; rgb[2]=q; break;
+    }
+}
+
+void mixColorHSV(const float a[3], const float b[3], float t, float out[3]) {
+    if (t < 0.0f) t = 0.0f; if (t > 1.0f) t = 1.0f;
+    // ease the interpolation within each palette segment
+    float te = t * t * (3.0f - 2.0f * t);
+
+    float ha[3], hb[3];
+    rgb_to_hsv(a, ha); rgb_to_hsv(b, hb);
+    float h1 = ha[0], h2 = hb[0];
+    float s1 = ha[1], s2 = hb[1];
+    float v1 = ha[2], v2 = hb[2];
+
+    // Interpolate hue along the shortest angular distance
+    float dh = h2 - h1;
+    if (dh > 0.5f) h1 += 1.0f;
+    else if (dh < -0.5f) h2 += 1.0f;
+    float h = h1 + (h2 - h1) * te;
+    if (h >= 1.0f) h -= 1.0f; if (h < 0.0f) h += 1.0f;
+
+    // Saturation: interpolate with easing and bias towards the higher saturation
+    float s = s1 + (s2 - s1) * te;
+    float sMax = (s1 > s2 ? s1 : s2);
+    float midBoost = 0.14f * (1.0f - fabsf(te - 0.5f) * 2.0f); // peak at mid
+    s = s + (sMax - s) * midBoost;
+    if (s < 0.0f) s = 0.0f; if (s > 1.0f) s = 1.0f;
+
+    // Value (brightness): gamma-aware interpolation to avoid gray/muddy dips
+    const float gamma = 2.2f;
+    float v1l = powf(v1, gamma);
+    float v2l = powf(v2, gamma);
+    float vl = v1l + (v2l - v1l) * te;
+    float v = powf(vl, 1.0f / gamma);
+    if (v < 0.0f) v = 0.0f; if (v > 1.0f) v = 1.0f;
+
+    float hv[3] = { h, s, v };
+    hsv_to_rgb(hv, out);
+}
+
 void mixColor(const float a[3], const float b[3], float t, float out[3]) {
     for (int i = 0; i < 3; ++i) out[i] = mixf(a[i], b[i], t);
 }
