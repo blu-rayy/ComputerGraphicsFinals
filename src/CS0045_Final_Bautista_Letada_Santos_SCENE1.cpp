@@ -18,7 +18,7 @@
 
 /* BUILD COMMAND
 
-g++ -DEMBEDDED_MODE src/main.cpp src/utils.cpp src/cake_scene2.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -lwinmm -o app.exe
+g++ -DEMBEDDED_MODE src/CS0045_Final_Bautista_Letada_Santos_SCENE1.cpp src/utils.cpp src/CS0045_Final_Bautista_Letada_Santos_SCENE2.cpp -Ilibs/include -Ilibs/freeglut/include -Llibs/freeglut/lib/x64 -Llibs -lglew32 -lfreeglut -lopengl32 -lglu32 -lwinmm -o app.exe
 */
 
 // Sun elevation in normalized device coords Y (-1 bottom .. +1 top)
