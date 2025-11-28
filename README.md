@@ -34,3 +34,13 @@ g++ -DEMBEDDED_MODE src/CS0045_Final_Bautista_Letada_Santos_SCENE1.cpp src/utils
 - GLEW (OpenGL extension loader) — GLEW 2.1.x
 - OpenGL (system `opengl32` / `glu32`) — Windows runtime
 - WinMM / MCI (`mmsystem` / `winmm`) — Windows multimedia APIs for audio playback
+
+### Install / download links
+
+- FreeGLUT: https://www.transmissionzero.co.uk/software/freeglut/ (Windows builds) or https://www.opengl.org/resources/libraries/glut/ for sources
+- GLEW: http://glew.sourceforge.net/ (downloads and installation instructions)
+- MinGW-w64 (g++ toolchain for Windows): https://www.mingw-w64.org/ or the MSYS2 installer at https://www.msys2.org/ (recommended for up-to-date packages)
+- OpenGL / GLU: provided by Windows (`opengl32.lib`, `glu32.lib`) — install Visual C++ redistributables or use MinGW which links to the system runtime
+- WinMM / MCI (audio): part of Windows SDK; available by including `<mmsystem.h>` and linking `-lwinmm` (no separate download on Windows)
+
+
