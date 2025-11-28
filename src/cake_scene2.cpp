@@ -47,10 +47,6 @@ void setColor(const Color& c) {
     glColor3f(c.r, c.g, c.b);
 }
 
-// ============================================================================
-// PRIMITIVE DRAWING FUNCTIONS
-// ============================================================================
-
 // Draw a flat plane
 void drawPlane(float width, float depth, const Color& color) {
     setColor(color);
@@ -215,10 +211,6 @@ void drawCircle(float radius, int segments, const Color& color) {
     }
     glEnd();
 }
-
-// ============================================================================
-// SCENE COMPONENT FUNCTIONS
-// ============================================================================
 
 // Draw grass tufts (small dark green ovals scattered on ground)
 void drawGrassTufts() {
@@ -511,26 +503,151 @@ void drawBackgroundTrees() {
     glTranslatef(2.0f, 0, -6.5f);
     drawTree(1.7f, 1.35f);
     glPopMatrix();
+    
+    // Additional scattered trees for more depth
+    glPushMatrix();
+    glTranslatef(-6.0f, 0, -4.0f);
+    drawTree(1.4f, 1.15f);
+    glPopMatrix();
+    
+    glPushMatrix();
+    glTranslatef(6.5f, 0, -4.5f);
+    drawTree(1.5f, 1.25f);
+    glPopMatrix();
+    
+    glPushMatrix();
+    glTranslatef(3.5f, 0, -7.0f);
+    drawTree(1.9f, 1.5f);
+    glPopMatrix();
+}
+
+// Draw a lamp post
+void drawLampPost(float height) {
+    Color postColor(0.2f, 0.2f, 0.2f);  // Dark grey/black
+    Color lampColor(0.95f, 0.85f, 0.6f);  // Warm light
+    
+    // Post
+    glPushMatrix();
+    glTranslatef(0, height/2, 0);
+    drawBox(0.08f, height, 0.08f, postColor);
+    glPopMatrix();
+    
+    // Lamp fixture top
+    glPushMatrix();
+    glTranslatef(0, height, 0);
+    drawBox(0.15f, 0.05f, 0.15f, postColor);
+    glPopMatrix();
+    
+    // Lamp globe
+    glPushMatrix();
+    glTranslatef(0, height - 0.12f, 0);
+    drawSphere(0.12f, 12, 12, lampColor);
+    glPopMatrix();
+}
+
+// Draw fallen leaves scattered on ground
+void drawFallenLeaves() {
+    Color leaf1(0.85f, 0.45f, 0.25f);  // Orange-brown
+    Color leaf2(0.75f, 0.35f, 0.20f);  // Darker brown
+    Color leaf3(0.92f, 0.65f, 0.35f);  // Yellow-orange
+    
+    float positions[][3] = {
+        {-2.5f, 0.01f, 1.0f}, {-1.8f, 0.01f, 0.5f}, {-3.2f, 0.01f, -0.5f},
+        {1.5f, 0.01f, 1.2f}, {2.2f, 0.01f, -0.8f}, {0.8f, 0.01f, 2.0f},
+        {-4.0f, 0.01f, 1.5f}, {3.8f, 0.01f, 0.8f}, {-0.8f, 0.01f, 2.5f},
+        {4.5f, 0.01f, -1.5f}, {-5.0f, 0.01f, -1.2f}, {1.0f, 0.01f, -2.0f},
+        {-1.5f, 0.01f, -1.8f}, {3.0f, 0.01f, 1.8f}, {-3.8f, 0.01f, 2.2f}
+    };
+    
+    for (int i = 0; i < 15; i++) {
+        glPushMatrix();
+        glTranslatef(positions[i][0], positions[i][1], positions[i][2]);
+        glRotatef(i * 37.0f, 0, 1, 0);  // Random rotation
+        glScalef(1.2f, 1.0f, 0.8f);
+        
+        // Alternate between leaf colors
+        if (i % 3 == 0) drawCircle(0.08f, 6, leaf1);
+        else if (i % 3 == 1) drawCircle(0.08f, 6, leaf2);
+        else drawCircle(0.08f, 6, leaf3);
+        
+        glPopMatrix();
+    }
+}
+
+// Draw a second bench (background)
+void drawBackgroundBench() {
+    float benchWidth = 2.5f;
+    float plankThickness = 0.08f;
+    float plankDepth = 0.8f;
+    float seatHeight = 0.6f;
+    float backrestHeight = 1.2f;
+    float legWidth = 0.08f;
+    
+    // Legs (4 legs)
+    glPushMatrix();
+    glTranslatef(-benchWidth/2 + 0.15f, seatHeight/2, plankDepth/2 - 0.05f);
+    drawBox(legWidth, seatHeight, legWidth, benchLegColor);
+    glPopMatrix();
+    
+    glPushMatrix();
+    glTranslatef(benchWidth/2 - 0.15f, seatHeight/2, plankDepth/2 - 0.05f);
+    drawBox(legWidth, seatHeight, legWidth, benchLegColor);
+    glPopMatrix();
+    
+    glPushMatrix();
+    glTranslatef(-benchWidth/2 + 0.15f, seatHeight/2, -plankDepth/2 + 0.05f);
+    drawBox(legWidth, seatHeight, legWidth, benchLegColor);
+    glPopMatrix();
+    
+    glPushMatrix();
+    glTranslatef(benchWidth/2 - 0.15f, seatHeight/2, -plankDepth/2 + 0.05f);
+    drawBox(legWidth, seatHeight, legWidth, benchLegColor);
+    glPopMatrix();
+    
+    // Seat planks
+    for (int i = 0; i < 3; i++) {
+        glPushMatrix();
+        float zOffset = -plankDepth/2 + (i * plankDepth / 2.5f) + 0.05f;
+        glTranslatef(0, seatHeight, zOffset);
+        drawBox(benchWidth, plankThickness, plankDepth/3.5f, benchWoodColor);
+        glPopMatrix();
+    }
+    
+    // Backrest
+    for (int i = 0; i < 2; i++) {
+        glPushMatrix();
+        glTranslatef(0, backrestHeight - 0.1f - (i * 0.15f), -plankDepth/2 + 0.05f);
+        glRotatef(-10, 1, 0, 0);
+        drawBox(benchWidth, plankThickness, plankDepth/4.0f, benchWoodColor);
+        glPopMatrix();
+    }
+    
+    // Back support posts
+    glPushMatrix();
+    glTranslatef(-benchWidth/2 + 0.15f, (seatHeight + backrestHeight)/2, -plankDepth/2 + 0.05f);
+    drawBox(legWidth, backrestHeight - seatHeight, legWidth, benchLegColor);
+    glPopMatrix();
+    
+    glPushMatrix();
+    glTranslatef(benchWidth/2 - 0.15f, (seatHeight + backrestHeight)/2, -plankDepth/2 + 0.05f);
+    drawBox(legWidth, backrestHeight - seatHeight, legWidth, benchLegColor);
+    glPopMatrix();
 }
 
 // Draw horizon strip
 void drawHorizon() {
     glPushMatrix();
-    glTranslatef(0, 0.005f, -4.0f);
+    glTranslatef(0, 0.005f, -5.5f);
     setColor(horizonColor);
     glBegin(GL_QUADS);
     glNormal3f(0, 1, 0);
-    glVertex3f(-20, 0, -3);
-    glVertex3f(20, 0, -3);
-    glVertex3f(20, 0, 3);
-    glVertex3f(-20, 0, 3);
+    glVertex3f(-20, 0, -2);
+    glVertex3f(20, 0, -2);
+    glVertex3f(20, 0, 0.5);
+    glVertex3f(-20, 0, 0.5);
     glEnd();
     glPopMatrix();
 }
-
-// ============================================================================
-// MAIN SCENE RENDERING
-// ============================================================================
 
 void drawScene() {
     // 1. Ground plane
@@ -539,40 +656,47 @@ void drawScene() {
     // 2. Grass tufts
     drawGrassTufts();
     
-    // 3. Horizon strip
-    drawHorizon();
+    // 3. Fallen leaves
+    drawFallenLeaves();
     
     // 4. Background trees
     drawBackgroundTrees();
     
-    // 5. Bench
+    // 5. Lamp posts
+    glPushMatrix();
+    glTranslatef(-4.5f, 0, 2.0f);
+    drawLampPost(2.5f);
+    glPopMatrix();
+    
+    glPushMatrix();
+    glTranslatef(5.0f, 0, 1.5f);
+    drawLampPost(2.5f);
+    glPopMatrix();
+    
+    // 6. Main bench (with cake)
     glPushMatrix();
     glTranslatef(0, 0, 0);
     drawBench();
     glPopMatrix();
     
-    // 6. Cake plate on bench (slightly off-center)
+    // 7. Cake plate on bench (slightly off-center)
     glPushMatrix();
     glTranslatef(-0.2f, 0.66f, 0.0f);  // On bench seat
     drawCakePlate();
     glPopMatrix();
     
-    // 7. Cake on plate
+    // 8. Cake on plate
     glPushMatrix();
     glTranslatef(-0.2f, 0.68f, 0.0f);
     drawCake();
     glPopMatrix();
     
-    // 8. Cake toppings
+    // 9. Cake toppings
     glPushMatrix();
     glTranslatef(-0.2f, 0.68f, 0.0f);
     drawCakeToppings();
     glPopMatrix();
 }
-
-// ============================================================================
-// OPENGL SETUP AND CALLBACKS
-// ============================================================================
 
 void initGL() {
     // Enable depth testing
@@ -604,8 +728,8 @@ void initGL() {
     glEnable(GL_COLOR_MATERIAL);
     glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
     
-    // Set background color (warm sky)
-    glClearColor(0.85f, 0.75f, 0.65f, 1.0f);
+    // Set background color (golden hour sky)
+    glClearColor(0.95f, 0.70f, 0.45f, 1.0f);
     
     // Smooth shading (can be changed to GL_FLAT for flat shading)
     glShadeModel(GL_SMOOTH);
@@ -710,10 +834,6 @@ void specialKeys(int key, int x, int y) {
     glutPostRedisplay();
 }
 
-// ============================================================================
-// EMBEDDED SCENE INTERFACE (matching cake.cpp pattern)
-// ============================================================================
-
 #ifdef EMBEDDED_MODE
 // Wrapper functions for embedded mode (called from utils.cpp)
 void cake_display() { display(); }
@@ -731,10 +851,6 @@ void cake_init_embedded() {
     initGL();
 }
 #endif
-
-// ============================================================================
-// MAIN FUNCTION
-// ============================================================================
 
 #ifndef EMBEDDED_MODE
 int main(int argc, char** argv) {
@@ -755,7 +871,6 @@ int main(int argc, char** argv) {
     glutSpecialFunc(specialKeys);
     
     // Print controls
-    printf("=== Golden Hour Cake Scene Controls ===\n");
     printf("W/S or UP/DOWN arrows: Rotate camera up/down\n");
     printf("A/D or LEFT/RIGHT arrows: Rotate camera left/right\n");
     printf("Q/E: Zoom in/out\n");
